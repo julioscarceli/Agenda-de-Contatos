@@ -5,6 +5,9 @@
   "description": "Abre o CRM de Contatos e Tarefas num painel lateral quando você está no WhatsApp Web.",
   "permissions": ["sidePanel"],
   "host_permissions": ["https://web.whatsapp.com/*"],
+  "action": {
+    "default_title": "Abrir CRM ao lado do WhatsApp"
+  },
   "background": {
     "service_worker": "background.js"
   },

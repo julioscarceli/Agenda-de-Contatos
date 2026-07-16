@@ -29,3 +29,11 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   const aba = await chrome.tabs.get(tabId);
   atualizarPainelLateral(tabId, aba.url);
 });
+
+// O Chrome não deixa a extensão abrir o painel sozinha — só decide se ele
+// fica disponível. Abrir de fato sempre precisa de um clique seu. Esse
+// clique no ícone da barra de ferramentas conta como esse clique, e abre
+// o painel direto, sem menu no meio.
+chrome.action.onClicked.addListener(async (aba) => {
+  await chrome.sidePanel.open({ tabId: aba.id });
+});
