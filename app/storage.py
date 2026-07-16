@@ -3,36 +3,129 @@ import os
 import psycopg2
 import psycopg2.extras
 
-from app.models import Contato
+from app.models import Coluna, Contato, Tarefa
 
 
-def conectar() -> psycopg2.extensions.connection:
+# Abre uma conexão nova com o Postgres, lendo o endereço da variável de
+# ambiente DATABASE_URL (nunca escrita direto no código — sempre vem de
+# fora, do .env ou do ambiente do servidor).
+def conectar():
     return psycopg2.connect(os.environ["DATABASE_URL"])
 
 
-def criar_tabela(conexao) -> None:
+# Cria as três tabelas do projeto se elas ainda não existirem. Pode rodar
+# toda vez que o programa inicia sem medo — "IF NOT EXISTS" garante que não
+# dá erro se a tabela já estiver lá.
+#
+# Repare que nenhuma tabela usa DELETE de verdade: em vez disso, todo mundo
+# tem uma coluna "status", que é o nosso jeito de fazer "soft delete" — igual
+# a Lixeira/Resolvidas do SpeckFlow, nada some de vez.
+def criar_tabelas(conexao) -> None:
     with conexao.cursor() as cursor:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS colunas (
+                id SERIAL PRIMARY KEY,
+                usuario_id UUID NOT NULL REFERENCES auth.users(id),
+                pilar TEXT NOT NULL,
+                nome TEXT NOT NULL,
+                ordem INTEGER NOT NULL,
+                cor TEXT
+            )
+            """
+        )
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS contatos (
                 id SERIAL PRIMARY KEY,
+                usuario_id UUID NOT NULL REFERENCES auth.users(id),
                 nome TEXT NOT NULL,
                 telefone TEXT NOT NULL,
                 email TEXT NOT NULL,
-                favorito BOOLEAN NOT NULL DEFAULT FALSE
+                coluna_id INTEGER REFERENCES colunas(id),
+                nota TEXT,
+                origem TEXT NOT NULL DEFAULT 'manual',
+                lembrete_em TIMESTAMPTZ,
+                status TEXT NOT NULL DEFAULT 'ativo'
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS tarefas (
+                id SERIAL PRIMARY KEY,
+                usuario_id UUID NOT NULL REFERENCES auth.users(id),
+                titulo TEXT NOT NULL,
+                descricao TEXT,
+                contato_id INTEGER REFERENCES contatos(id),
+                coluna_id INTEGER REFERENCES colunas(id),
+                prazo DATE,
+                lembrete_em TIMESTAMPTZ,
+                origem TEXT NOT NULL DEFAULT 'manual',
+                audio_url TEXT,
+                status TEXT NOT NULL DEFAULT 'ativo'
             )
             """
         )
     conexao.commit()
 
 
+# --- Colunas -----------------------------------------------------------
+
+# Traduz uma linha crua do banco (um dicionário) pra um objeto Coluna.
+def _linha_para_coluna(linha: dict) -> Coluna:
+    return Coluna(
+        id=linha["id"],
+        usuario_id=str(linha["usuario_id"]),
+        pilar=linha["pilar"],
+        nome=linha["nome"],
+        ordem=linha["ordem"],
+        cor=linha["cor"],
+    )
+
+
+# Cria uma coluna nova pro usuário (ex: usuário criou a etapa "Negociando").
+def inserir_coluna(conexao, coluna: Coluna) -> int:
+    with conexao.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO colunas (usuario_id, pilar, nome, ordem, cor)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (coluna.usuario_id, coluna.pilar, coluna.nome, coluna.ordem, coluna.cor),
+        )
+        id_gerado = cursor.fetchone()[0]
+    conexao.commit()
+    return id_gerado
+
+
+# Lista as colunas de um usuário, filtrando por pilar ('contato' ou
+# 'tarefa') — cada quadro só mostra as colunas que pertencem a ele.
+def listar_colunas(conexao, usuario_id: str, pilar: str) -> list[Coluna]:
+    with conexao.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+        cursor.execute(
+            "SELECT * FROM colunas WHERE usuario_id = %s AND pilar = %s ORDER BY ordem",
+            (usuario_id, pilar),
+        )
+        linhas = cursor.fetchall()
+    return [_linha_para_coluna(linha) for linha in linhas]
+
+
+# --- Contatos ------------------------------------------------------------
+
 def _linha_para_contato(linha: dict) -> Contato:
     return Contato(
         id=linha["id"],
+        usuario_id=str(linha["usuario_id"]),
         nome=linha["nome"],
         telefone=linha["telefone"],
         email=linha["email"],
-        favorito=linha["favorito"],
+        coluna_id=linha["coluna_id"],
+        nota=linha["nota"],
+        origem=linha["origem"],
+        lembrete_em=linha["lembrete_em"],
+        status=linha["status"],
     )
 
 
@@ -40,27 +133,36 @@ def inserir_contato(conexao, contato: Contato) -> int:
     with conexao.cursor() as cursor:
         cursor.execute(
             """
-            INSERT INTO contatos (nome, telefone, email, favorito)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO contatos
+                (usuario_id, nome, telefone, email, coluna_id, nota, origem, lembrete_em, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
-            (contato.nome, contato.telefone, contato.email, contato.favorito),
+            (
+                contato.usuario_id,
+                contato.nome,
+                contato.telefone,
+                contato.email,
+                contato.coluna_id,
+                contato.nota,
+                contato.origem,
+                contato.lembrete_em,
+                contato.status,
+            ),
         )
         id_gerado = cursor.fetchone()[0]
     conexao.commit()
     return id_gerado
 
 
-def listar_contatos(conexao) -> list[Contato]:
+# Lista os contatos "vivos" de um usuário (não apaga nada, só esconde quem
+# está resolvido ou na lixeira).
+def listar_contatos(conexao, usuario_id: str) -> list[Contato]:
     with conexao.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
-        cursor.execute("SELECT * FROM contatos ORDER BY id")
-        linhas = cursor.fetchall()
-    return [_linha_para_contato(linha) for linha in linhas]
-
-
-def listar_favoritos(conexao) -> list[Contato]:
-    with conexao.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
-        cursor.execute("SELECT * FROM contatos WHERE favorito = TRUE ORDER BY id")
+        cursor.execute(
+            "SELECT * FROM contatos WHERE usuario_id = %s AND status = 'ativo' ORDER BY id",
+            (usuario_id,),
+        )
         linhas = cursor.fetchall()
     return [_linha_para_contato(linha) for linha in linhas]
 
@@ -72,30 +174,141 @@ def buscar_contato(conexao, id_contato: int) -> Contato | None:
     return _linha_para_contato(linha) if linha else None
 
 
-def atualizar_contato(conexao, id_contato: int, nome: str, telefone: str, email: str) -> bool:
+def atualizar_contato(conexao, id_contato: int, nome: str, telefone: str, email: str, nota: str | None) -> bool:
     with conexao.cursor() as cursor:
         cursor.execute(
-            "UPDATE contatos SET nome = %s, telefone = %s, email = %s WHERE id = %s",
-            (nome, telefone, email, id_contato),
+            "UPDATE contatos SET nome = %s, telefone = %s, email = %s, nota = %s WHERE id = %s",
+            (nome, telefone, email, nota, id_contato),
         )
         atualizado = cursor.rowcount > 0
     conexao.commit()
     return atualizado
 
 
-def alternar_favorito(conexao, id_contato: int) -> bool:
+# Move o contato pra outra coluna (ex: arrastar de "Lead" pra "Cliente").
+def mover_contato_de_coluna(conexao, id_contato: int, coluna_id: int) -> bool:
     with conexao.cursor() as cursor:
         cursor.execute(
-            "UPDATE contatos SET favorito = NOT favorito WHERE id = %s", (id_contato,)
+            "UPDATE contatos SET coluna_id = %s WHERE id = %s", (coluna_id, id_contato)
+        )
+        movido = cursor.rowcount > 0
+    conexao.commit()
+    return movido
+
+
+# Muda o status do contato (ativo / resolvido / lixeira) — é o nosso "soft
+# delete": nunca roda DELETE de verdade num contato.
+def mudar_status_contato(conexao, id_contato: int, status: str) -> bool:
+    with conexao.cursor() as cursor:
+        cursor.execute(
+            "UPDATE contatos SET status = %s WHERE id = %s", (status, id_contato)
         )
         alterado = cursor.rowcount > 0
     conexao.commit()
     return alterado
 
 
-def deletar_contato(conexao, id_contato: int) -> bool:
+# --- Tarefas ------------------------------------------------------------
+
+def _linha_para_tarefa(linha: dict) -> Tarefa:
+    return Tarefa(
+        id=linha["id"],
+        usuario_id=str(linha["usuario_id"]),
+        titulo=linha["titulo"],
+        descricao=linha["descricao"],
+        contato_id=linha["contato_id"],
+        coluna_id=linha["coluna_id"],
+        prazo=linha["prazo"],
+        lembrete_em=linha["lembrete_em"],
+        origem=linha["origem"],
+        audio_url=linha["audio_url"],
+        status=linha["status"],
+    )
+
+
+def inserir_tarefa(conexao, tarefa: Tarefa) -> int:
     with conexao.cursor() as cursor:
-        cursor.execute("DELETE FROM contatos WHERE id = %s", (id_contato,))
-        removido = cursor.rowcount > 0
+        cursor.execute(
+            """
+            INSERT INTO tarefas
+                (usuario_id, titulo, descricao, contato_id, coluna_id, prazo,
+                 lembrete_em, origem, audio_url, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (
+                tarefa.usuario_id,
+                tarefa.titulo,
+                tarefa.descricao,
+                tarefa.contato_id,
+                tarefa.coluna_id,
+                tarefa.prazo,
+                tarefa.lembrete_em,
+                tarefa.origem,
+                tarefa.audio_url,
+                tarefa.status,
+            ),
+        )
+        id_gerado = cursor.fetchone()[0]
     conexao.commit()
-    return removido
+    return id_gerado
+
+
+# Lista as tarefas "vivas" de um usuário. Se contato_id for passado, filtra
+# só as tarefas daquele contato específico (útil pra mostrar a timeline dele).
+def listar_tarefas(conexao, usuario_id: str, contato_id: int | None = None) -> list[Tarefa]:
+    with conexao.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+        if contato_id is None:
+            cursor.execute(
+                "SELECT * FROM tarefas WHERE usuario_id = %s AND status = 'ativo' ORDER BY id",
+                (usuario_id,),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT * FROM tarefas
+                WHERE usuario_id = %s AND contato_id = %s AND status = 'ativo'
+                ORDER BY id
+                """,
+                (usuario_id, contato_id),
+            )
+        linhas = cursor.fetchall()
+    return [_linha_para_tarefa(linha) for linha in linhas]
+
+
+def buscar_tarefa(conexao, id_tarefa: int) -> Tarefa | None:
+    with conexao.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+        cursor.execute("SELECT * FROM tarefas WHERE id = %s", (id_tarefa,))
+        linha = cursor.fetchone()
+    return _linha_para_tarefa(linha) if linha else None
+
+
+def atualizar_tarefa(conexao, id_tarefa: int, titulo: str, descricao: str | None, prazo) -> bool:
+    with conexao.cursor() as cursor:
+        cursor.execute(
+            "UPDATE tarefas SET titulo = %s, descricao = %s, prazo = %s WHERE id = %s",
+            (titulo, descricao, prazo, id_tarefa),
+        )
+        atualizado = cursor.rowcount > 0
+    conexao.commit()
+    return atualizado
+
+
+def mover_tarefa_de_coluna(conexao, id_tarefa: int, coluna_id: int) -> bool:
+    with conexao.cursor() as cursor:
+        cursor.execute(
+            "UPDATE tarefas SET coluna_id = %s WHERE id = %s", (coluna_id, id_tarefa)
+        )
+        movida = cursor.rowcount > 0
+    conexao.commit()
+    return movida
+
+
+def mudar_status_tarefa(conexao, id_tarefa: int, status: str) -> bool:
+    with conexao.cursor() as cursor:
+        cursor.execute(
+            "UPDATE tarefas SET status = %s WHERE id = %s", (status, id_tarefa)
+        )
+        alterado = cursor.rowcount > 0
+    conexao.commit()
+    return alterado

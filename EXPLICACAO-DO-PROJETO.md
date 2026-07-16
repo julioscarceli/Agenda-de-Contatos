@@ -130,7 +130,53 @@ camada (o `cli.py` nunca fala direto com o banco, por exemplo).
 
 ---
 
-## 6. Segurança aplicada (16/07/2026)
+## 6. A virada: de agenda simples pra CRM com dois pilares
+
+Depois da primeira versão (só Contato, com um favorito sim/não), o objetivo
+do projeto mudou: virar a base de um CRM real, inspirado em duas coisas —
+o jeito como você usa o WhatsApp pra gerir clientes, e o
+[SpeckFlow](https://speckflow.zeabur.app) (seu quadro de notas por voz).
+Isso trouxe mudanças estruturais:
+
+**Dois pilares, mesmo projeto.** `Contato` continua existindo, e ganhou um
+companheiro: `Tarefa`. Uma tarefa pode viver solta (um lembrete qualquer)
+ou grudada num contato específico (`contato_id`), tipo "ligar pro Cliente
+X amanhã". Isso é o que transforma uma lista de contatos numa ferramenta
+de gestão de relacionamento de verdade.
+
+**Coluna: a etapa que o próprio usuário desenha.** Antes, "favorito" era
+fixo (só sim ou não). Agora existe uma tabela `colunas`, onde cada usuário
+cria as etapas que fazem sentido pra ele (ex: "Lead", "Negociando",
+"Cliente" pros contatos; "Prioridade", "Lembretes" pras tarefas) — o
+sistema só sugere um conjunto padrão pra não começar vazio
+(`garantir_colunas_padrao` em `services.py`), mas o usuário manda de
+verdade. Isso é o que vai virar, no frontend, um quadro Kanban de arrastar
+e soltar.
+
+**Nada se apaga de vez.** Apagar de verdade (`DELETE`) virou trocar o
+campo `status` pra `"resolvido"` ou `"lixeira"` — igual ao Lixeira/Resolvidas
+do SpeckFlow. Um contato ou tarefa "resolvido" some da tela principal, mas
+continua no banco, recuperável.
+
+**Nasceu o conceito de usuário.** Se cada pessoa tem suas próprias
+colunas, o sistema precisa saber de quem é cada coisa. Por isso toda
+tabela agora tem `usuario_id`, apontando pra tabela `auth.users` que o
+Supabase self-hosted já gerencia sozinho — não criamos uma tabela de
+usuário do zero, aproveitamos a que já veio pronta com o Auth. Como o
+login de verdade é coisa de frontend (fica pro final), hoje existe um
+único usuário de teste fixo (ver `USUARIO_ID_TESTE` no `.env`) que todo
+mundo usa localmente.
+
+**Voz como forma de entrada (peça pronta, ainda não conectada).** A
+função `transcrever_audio` em `services.py` manda um áudio pro Whisper da
+OpenAI e devolve o texto. Ela existe e funciona, mas ninguém chama ela
+ainda — gravar áudio é interface (frontend/extensão), então essa parte só
+vai ganhar uso quando chegarmos lá. É a mesma lógica de "construir a
+fundação antes da parede decorativa".
+
+---
+
+## 7. Segurança aplicada (16/07/2026)
 
 - **Chaves de demonstração rotacionadas**: o template do Supabase
   self-hosted sobe com `JWT_SECRET`/`ANON_KEY`/`SERVICE_ROLE_KEY` de
@@ -145,15 +191,19 @@ camada (o `cli.py` nunca fala direto com o banco, por exemplo).
   fica pro Cloudflare ou pra própria aplicação FastAPI mais pra frente;
   atualização de imagem vira revisão periódica, não ação única).
 
-## 7. O que ainda falta (próximos passos combinados)
+## 8. O que ainda falta (próximos passos combinados)
 
-- [x] Provisionar o serviço de Postgres dentro do projeto Zeabur
-      (`agenda-contatos`) e obter a `DATABASE_URL` real — feito via
-      `zeabur template deploy` (template oficial PostgreSQL), sempre pelo
-      CLI, nunca pelo dashboard
-- [x] Rodar os testes (`pytest`) contra esse banco — 7 testes passando,
-      backend validado ponta a ponta (incluindo o `cli.py`)
-- [ ] Subir este código pro repositório do GitHub
-      (`julioscarceli/Agenda-de-Contatos`, hoje vazio)
-- [ ] Decidir e construir o frontend (web), agora que o backend está
-      validado — combinado que isso viria depois da modularização
+- [x] Backend modularizado, no ar no Zeabur, código no GitHub
+- [x] Dois pilares (Contato + Tarefa), colunas personalizáveis, soft delete
+      — 17 testes passando ponta a ponta (incluindo o `cli.py`)
+- [x] Usuário de teste criado (via SQL direto, contornando uma
+      instabilidade do container de Auth — ver pendência abaixo)
+- [ ] Investigar por que o container `auth` do stack self-hosted fica
+      instável/suspenso (possível limitação de recursos rodando 12
+      containers no plano gratuito do Zeabur) — não bloqueia o trabalho
+      atual porque falamos com o Postgres direto, mas vai bloquear login
+      de verdade mais pra frente
+- [ ] Conectar a transcrição de voz (`transcrever_audio`) a uma interface
+      real — depende do frontend/extensão
+- [ ] Decidir e construir o frontend (Kanban + voz), agora que o backend
+      cobre os dois pilares
