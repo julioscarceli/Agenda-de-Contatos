@@ -59,11 +59,24 @@ solto. Isso também é mais parecido com o que se usa em produção no mercado
 (inclusive nos seus outros projetos, como o Automatik, que já usa Postgres
 via Supabase).
 
-**Por que rodando no Zeabur e não no Supabase?**
-Sua conta Supabase já tem um limite de 2 projetos gratuitos ocupado. O
-Zeabur também oferece um serviço de Postgres dentro do mesmo projeto onde a
-aplicação vai rodar — sem esse limite de conta, e mantendo tudo (app +
-banco) no mesmo lugar.
+**Por que rodando no Zeabur e não no Supabase.com?**
+Sua conta Supabase.com já tem um limite de 2 projetos gratuitos ocupado.
+Só que existe uma segunda opção, que é o que este projeto usa: o
+**Supabase self-hosted** — o mesmo software open-source do Supabase
+(Postgres + Auth + Storage + Studio + API REST automática, tudo em
+containers Docker) rodando dentro de um projeto Zeabur comum, sem nenhuma
+relação com a conta Supabase.com e sem o limite de 2 projetos (esse limite
+é só da versão gerenciada/paga). Fica tudo (app + banco + Studio) no mesmo
+lugar, com a interface visual do Supabase Studio pra ver e editar os dados.
+
+**Composição do stack** (12 serviços, todos no projeto Zeabur
+`agenda-contatos`): `postgresql-gang` (o banco), `studio` (interface
+visual), `meta` (conecta o Studio ao Postgres), `auth`, `rest`,
+`realtime-dev`, `storage`, `supavisor` (pool de conexões), `kong` (gateway
+que expõe tudo por HTTPS num domínio só), `minio`, `imgproxy`, `functions`.
+Hoje só usamos o Postgres via `psycopg2` direto — Auth/Storage ficam
+disponíveis prontos caso o projeto ganhe login de usuário ou upload de
+arquivo no futuro.
 
 ---
 
