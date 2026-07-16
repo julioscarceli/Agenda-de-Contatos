@@ -12,6 +12,8 @@
     <div class="coluna-cabecalho">
       <span class="bolinha" style="background:{{ coluna.cor or '#94a3b8' }}"></span>
       <h2>{{ coluna.nome }}</h2>
+      <button type="button" class="acao-editar-coluna" data-coluna-id="{{ coluna.id }}"
+              data-nome="{{ coluna.nome }}" title="Renomear fase">✎</button>
       <span class="contagem">{{ itens_por_coluna.get(coluna.id, [])|length }}</span>
     </div>
 
@@ -50,10 +52,34 @@
     </div>
   </div>
   {% endfor %}
+
+  <button type="button" id="botao-nova-coluna" class="coluna-nova">+ nova fase</button>
 </div>
 
+<!-- Renomear ou criar uma fase — mesmo formulário, o JS troca a ação e o
+     texto do título conforme o caso. -->
+<dialog id="modal-coluna">
+  <form method="post" id="form-coluna">
+    <h3 id="titulo-modal-coluna">Nova fase</h3>
+    <input type="hidden" name="pilar" value="{{ pilar }}">
+    <label>Nome <input name="nome" id="input-nome-coluna" required></label>
+    <div class="botoes-modal">
+      <button type="button" id="botao-cancelar-coluna" class="botao-secundario">Cancelar</button>
+      <button type="submit" class="botao-primario">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
 <!-- Microfone: jeito principal de criar. Um clique começa a gravar o
-     comando, o próximo clique termina e o backend cuida do resto. -->
+     comando, o próximo clique termina e o backend cuida do resto. A dica
+     ao lado muda conforme a aba, pra lembrar como falar certo. -->
+<div class="dica-comando">
+  {% if pilar == "contato" %}
+    Diga a fase e o nome — ex: "contato na fase lead, nome Maria Souza"
+  {% else %}
+    Diga a fase, título e descrição — ex: "tarefa na fase prioridade, título: ligar pro cliente, descrição: combinar horário de entrega"
+  {% endif %}
+</div>
 <button id="botao-comando-voz" title="Falar comando">
   <svg viewBox="0 0 24 24" class="icone-mic" fill="currentColor" aria-hidden="true">
     <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>

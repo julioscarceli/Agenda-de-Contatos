@@ -12,6 +12,11 @@ document.querySelectorAll(".lista-cards").forEach((lista) => {
   new Sortable(lista, {
     group: "cards",
     animation: 150,
+    // Deixa mais fácil "acertar" a coluna: não precisa soltar exatamente
+    // em cima de um card — chegar perto/na direção da coluna já basta.
+    emptyInsertThreshold: 60,
+    swapThreshold: 0.65,
+    invertSwap: true,
     onEnd: (evento) => {
       const idItem = evento.item.dataset.itemId;
       const idColunaNova = evento.to.dataset.colunaId;
@@ -107,6 +112,35 @@ document.querySelectorAll(".acao-editar").forEach((botao) => {
 });
 
 document.getElementById("botao-cancelar-editar").addEventListener("click", () => modalEditar.close());
+
+// --- Renomear ou criar uma fase (coluna) -----------------------------------
+
+const modalColuna = document.getElementById("modal-coluna");
+const formColuna = document.getElementById("form-coluna");
+const inputNomeColuna = document.getElementById("input-nome-coluna");
+const tituloModalColuna = document.getElementById("titulo-modal-coluna");
+
+// O lápis pequeno ao lado do nome da coluna abre o mesmo modal de baixo,
+// só que já preenchido com o nome atual e apontando pra rota de renomear.
+document.querySelectorAll(".acao-editar-coluna").forEach((botao) => {
+  botao.addEventListener("click", () => {
+    formColuna.action = `/colunas/${botao.dataset.colunaId}/renomear`;
+    tituloModalColuna.textContent = "Renomear fase";
+    inputNomeColuna.value = botao.dataset.nome || "";
+    modalColuna.showModal();
+  });
+});
+
+// O "+ nova fase" no final do quadro abre o mesmo modal vazio, apontando
+// pra rota de criar em vez de renomear.
+document.getElementById("botao-nova-coluna").addEventListener("click", () => {
+  formColuna.action = "/colunas";
+  tituloModalColuna.textContent = "Nova fase";
+  inputNomeColuna.value = "";
+  modalColuna.showModal();
+});
+
+document.getElementById("botao-cancelar-coluna").addEventListener("click", () => modalColuna.close());
 
 // --- Formulário manual (plano B) -------------------------------------------
 

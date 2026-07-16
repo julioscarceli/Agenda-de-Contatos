@@ -74,6 +74,9 @@ main { padding: 2rem; max-width: 1400px; margin: 0 auto; }
   padding: 0.85rem;
   width: 270px;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 70vh;
 }
 
 .coluna-cabecalho {
@@ -97,8 +100,22 @@ main { padding: 2rem; max-width: 1400px; margin: 0 auto; }
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: #475569;
-  flex: 1;
 }
+
+/* O lápis de renomear fica bem pequeno e discreto — só aparece "de
+   verdade" quando o mouse passa perto do cabeçalho da coluna. */
+.acao-editar-coluna {
+  border: none;
+  background: none;
+  color: #94a3b8;
+  font-size: 0.7rem;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.12s;
+}
+
+.coluna-cabecalho:hover .acao-editar-coluna { opacity: 1; }
 
 .contagem {
   font-size: 0.75rem;
@@ -107,9 +124,32 @@ main { padding: 2rem; max-width: 1400px; margin: 0 auto; }
   border-radius: 999px;
   padding: 0.05rem 0.5rem;
   font-weight: 600;
+  margin-left: auto;
 }
 
-.lista-cards { min-height: 40px; }
+/* Chip discreto de "+ nova fase", no final do quadro — mesmo tamanho de
+   coluna, mas com borda tracejada e sem preenchimento, pra não competir
+   visualmente com as colunas de verdade. */
+.coluna-nova {
+  width: 270px;
+  min-height: 70vh;
+  flex-shrink: 0;
+  border: 2px dashed #cbd5e1;
+  border-radius: 12px;
+  background: none;
+  color: var(--cor-texto-suave);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+}
+
+.coluna-nova:hover { border-color: var(--cor-primaria); color: var(--cor-primaria); }
+
+/* flex: 1 faz a lista preencher todo o espaço vazio da coluna (mesmo sem
+   cards), então soltar em qualquer lugar da coluna conta — não só bem em
+   cima de um card já existente. */
+.lista-cards { flex: 1; min-height: 100%; }
 
 .card {
   background: var(--cor-superficie);
@@ -219,6 +259,30 @@ main { padding: 2rem; max-width: 1400px; margin: 0 auto; }
 #botao-comando-voz .icone-mic { width: 28px; height: 28px; }
 
 #botao-comando-voz:hover { transform: translateX(-50%) scale(1.06); }
+
+/* Dica curta de como falar, fixa logo acima do microfone (centralizada,
+   pra nunca sobrepor o botão) — some em telas estreitas. */
+.dica-comando {
+  position: fixed;
+  bottom: 6.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 280px;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--cor-texto-suave);
+  background: white;
+  border: 1px solid var(--cor-borda);
+  border-radius: 10px;
+  padding: 0.5rem 0.8rem;
+  box-shadow: var(--sombra-card);
+  z-index: 19;
+}
+
+@media (max-width: 720px) {
+  .dica-comando { display: none; }
+}
 
 #botao-comando-voz.gravando {
   background: linear-gradient(135deg, var(--cor-perigo), #f97316);

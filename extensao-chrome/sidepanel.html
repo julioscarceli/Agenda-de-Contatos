@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <title>CRM</title>
+  <style>
+    /* O painel lateral ocupa a altura toda da janela do Chrome — o
+       iframe só precisa preencher 100% disso, sem barra de rolagem
+       dupla (uma do painel, outra do app lá dentro). */
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+    iframe { border: none; width: 100%; height: 100%; display: block; }
+  </style>
+</head>
+<body>
+  <!--
+    Enquanto o app roda só local, aponta pro uvicorn na sua máquina.
+    Quando fizer o deploy no Zeabur, troca essa URL pela do domínio público.
+  -->
+  <iframe src="http://127.0.0.1:8000/contatos"></iframe>
+</body>
+</html>

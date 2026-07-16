@@ -137,6 +137,16 @@ def listar_colunas(conexao, usuario_id: str, pilar: str) -> list[Coluna]:
     return [_linha_para_coluna(linha) for linha in linhas]
 
 
+# Troca só o nome de uma coluna (o usuário decidiu chamar "Lead" de outra
+# coisa, por exemplo) — a etapa continua a mesma, com os mesmos cards.
+def atualizar_nome_coluna(conexao, coluna_id: int, nome: str) -> bool:
+    with conexao.cursor() as cursor:
+        cursor.execute("UPDATE colunas SET nome = %s WHERE id = %s", (nome, coluna_id))
+        atualizado = cursor.rowcount > 0
+    conexao.commit()
+    return atualizado
+
+
 # --- Contatos ------------------------------------------------------------
 
 def _linha_para_contato(linha: dict) -> Contato:

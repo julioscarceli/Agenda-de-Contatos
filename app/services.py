@@ -43,6 +43,10 @@ class TarefaNaoEncontrada(Exception):
     pass
 
 
+class ColunaInvalida(Exception):
+    pass
+
+
 # Um contato nasce só com o nome (é só isso que a voz dita — telefone
 # ditado por áudio é ruim de usar). Telefone e email ficam opcionais na
 # criação; o card vem em branco nesses campos até alguém digitar depois.
@@ -79,6 +83,28 @@ def garantir_colunas_padrao(conexao, usuario_id: str, pilar: str) -> list[Coluna
 
 def listar_colunas(conexao, usuario_id: str, pilar: str) -> list[Coluna]:
     return storage.listar_colunas(conexao, usuario_id, pilar)
+
+
+# Muda o nome de uma fase (ex: renomear "Lead" pra "Novo Contato"). Os
+# cards que já estão nela continuam lá — só o rótulo muda.
+def renomear_coluna(conexao, coluna_id: int, novo_nome: str) -> None:
+    if not novo_nome.strip():
+        raise ColunaInvalida("Nome da fase não pode ser vazio.")
+    atualizado = storage.atualizar_nome_coluna(conexao, coluna_id, novo_nome.strip())
+    if not atualizado:
+        raise ColunaInvalida(f"Coluna {coluna_id} não encontrada.")
+
+
+# Cria uma fase nova, sempre no final do quadro (depois da última coluna
+# que já existe) — o usuário decide o nome, a gente só posiciona.
+def criar_coluna(conexao, usuario_id: str, pilar: str, nome: str) -> Coluna:
+    if not nome.strip():
+        raise ColunaInvalida("Nome da fase não pode ser vazio.")
+    colunas_existentes = storage.listar_colunas(conexao, usuario_id, pilar)
+    nova_ordem = len(colunas_existentes)
+    coluna = Coluna(usuario_id=usuario_id, pilar=pilar, nome=nome.strip(), ordem=nova_ordem)
+    coluna.id = storage.inserir_coluna(conexao, coluna)
+    return coluna
 
 
 # --- Contatos ------------------------------------------------------------

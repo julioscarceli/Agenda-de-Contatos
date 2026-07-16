@@ -94,6 +94,28 @@ def pagina_tarefas(request: Request, conexao=Depends(get_conexao)):
     return _montar_quadro(request, conexao, "tarefa")
 
 
+# --- Ações de Coluna (fase) --------------------------------------------------
+
+def _pagina_do_pilar(pilar: str) -> str:
+    return "/contatos" if pilar == "contato" else "/tarefas"
+
+
+# Renomear uma fase — chamado pelo lápis pequeno ao lado do nome da coluna.
+@app.post("/colunas/{id_coluna}/renomear")
+def renomear_coluna(
+    id_coluna: int, nome: str = Form(...), pilar: str = Form(...), conexao=Depends(get_conexao)
+):
+    services.renomear_coluna(conexao, id_coluna, nome)
+    return RedirectResponse(_pagina_do_pilar(pilar), status_code=303)
+
+
+# Criar uma fase nova — chamado pelo "+ nova fase" no final do quadro.
+@app.post("/colunas")
+def criar_coluna(pilar: str = Form(...), nome: str = Form(...), conexao=Depends(get_conexao)):
+    services.criar_coluna(conexao, USUARIO_ID, pilar, nome)
+    return RedirectResponse(_pagina_do_pilar(pilar), status_code=303)
+
+
 # --- Ações de Contato ------------------------------------------------------
 
 # Cria um contato a partir do formulário manual (plano B).
