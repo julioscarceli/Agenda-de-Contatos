@@ -176,7 +176,35 @@ fundação antes da parede decorativa".
 
 ---
 
-## 7. Segurança aplicada (16/07/2026)
+## 7. O frontend: FastAPI + Jinja2 + JavaScript simples
+
+Depois que o backend estava validado (camadas + dois pilares), chegou a
+vez da "decoração da casa". A escolha foi **não** usar um framework JS
+pesado (React/Vue): em vez disso, o próprio `app/main.py` (FastAPI) desenha
+o HTML (com Jinja2) e devolve pronto pro navegador. Um JavaScript comum
+(`kanban.js`) cuida só de duas coisas que precisam de interatividade:
+
+**Arrastar e soltar.** Cada coluna do quadro é uma lista "arrastável"
+(usando a biblioteca SortableJS). Quando você solta um card numa coluna
+diferente, o JavaScript manda um `fetch` pro backend
+(`POST /contatos/{id}/mover`) avisando a nova coluna — é a mesma função
+`services.mover_contato` que o CLI já usava, só chamada por um clique em
+vez de um número digitado.
+
+**Gravar e transcrever voz.** O botão "🎙 Gravar" usa a API `MediaRecorder`
+do próprio navegador pra gravar um áudio curto. Quando você para de
+gravar, o áudio é enviado pro backend (`POST /transcrever`), que chama
+`services.transcrever_audio` (Whisper) e devolve o texto — o JavaScript
+cola esse texto direto no campo de nota/descrição, sem você digitar nada.
+
+**Por que essa arquitetura reaproveita tudo:** `main.py` não tem regra de
+negócio nenhuma — ele só traduz cliques em chamadas de `services.py`,
+exatamente como `cli.py` já fazia. Isso confirma a promessa lá do início
+do documento (seção 1): trocar a interface não exigiu duplicar nada.
+
+---
+
+## 8. Segurança aplicada (16/07/2026)
 
 - **Chaves de demonstração rotacionadas**: o template do Supabase
   self-hosted sobe com `JWT_SECRET`/`ANON_KEY`/`SERVICE_ROLE_KEY` de
@@ -191,7 +219,7 @@ fundação antes da parede decorativa".
   fica pro Cloudflare ou pra própria aplicação FastAPI mais pra frente;
   atualização de imagem vira revisão periódica, não ação única).
 
-## 8. O que ainda falta (próximos passos combinados)
+## 9. O que ainda falta (próximos passos combinados)
 
 - [x] Backend modularizado, no ar no Zeabur, código no GitHub
 - [x] Dois pilares (Contato + Tarefa), colunas personalizáveis, soft delete
@@ -203,7 +231,10 @@ fundação antes da parede decorativa".
       containers no plano gratuito do Zeabur) — não bloqueia o trabalho
       atual porque falamos com o Postgres direto, mas vai bloquear login
       de verdade mais pra frente
-- [ ] Conectar a transcrição de voz (`transcrever_audio`) a uma interface
-      real — depende do frontend/extensão
-- [ ] Decidir e construir o frontend (Kanban + voz), agora que o backend
-      cobre os dois pilares
+- [x] Construir o frontend web (FastAPI + Jinja2 + JS simples): Kanban
+      com arrastar-e-soltar (SortableJS) e captura de nota por voz
+      (MediaRecorder + Whisper), testado rodando local
+- [ ] Deploy do serviço da aplicação (FastAPI) no mesmo projeto Zeabur —
+      hoje só roda local
+- [ ] Extensão de Chrome pra rodar ao lado do WhatsApp Web (visão de
+      longo prazo, ainda não iniciada)

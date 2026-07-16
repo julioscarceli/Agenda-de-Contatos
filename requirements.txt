@@ -2,3 +2,7 @@ psycopg2-binary
 python-dotenv
 pytest
 openai
+fastapi
+uvicorn[standard]
+jinja2
+python-multipart

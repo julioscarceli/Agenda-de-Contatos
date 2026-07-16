@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agenda de Contatos + Tarefas</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topo">
+    <h1>Agenda de Contatos + Tarefas</h1>
+    <nav>
+      <a href="/contatos" class="{{ 'ativo' if pilar == 'contato' else '' }}">Contatos</a>
+      <a href="/tarefas" class="{{ 'ativo' if pilar == 'tarefa' else '' }}">Tarefas</a>
+    </nav>
+  </header>
+
+  <main data-pilar="{{ pilar }}">
+    {% block conteudo %}{% endblock %}
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+  <script src="/static/kanban.js"></script>
+</body>
+</html>

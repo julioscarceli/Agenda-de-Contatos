@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block conteudo %}
+<div class="quadro">
+  {% for coluna in colunas %}
+  <div class="coluna" data-coluna-id="{{ coluna.id }}">
+    <h2>{{ coluna.nome }}</h2>
+
+    <div class="lista-cards" data-coluna-id="{{ coluna.id }}">
+      {% for item in itens_por_coluna.get(coluna.id, []) %}
+      <div class="card" data-item-id="{{ item.id }}">
+        {% if pilar == "contato" %}
+          <strong>{{ item.nome }}</strong>
+          <div class="detalhe">{{ item.telefone }} · {{ item.email }}</div>
+          {% if item.nota %}<div class="nota">{{ item.nota }}</div>{% endif %}
+        {% else %}
+          <strong>{{ item.titulo }}</strong>
+          {% if item.descricao %}<div class="detalhe">{{ item.descricao }}</div>{% endif %}
+          {% if item.contato_id %}<div class="nota">contato #{{ item.contato_id }}</div>{% endif %}
+        {% endif %}
+
+        <div class="acoes-card">
+          <form method="post" action="/{{ 'contatos' if pilar == 'contato' else 'tarefas' }}/{{ item.id }}/resolver">
+            <button type="submit" title="Marcar como resolvido">✓</button>
+          </form>
+          <form method="post" action="/{{ 'contatos' if pilar == 'contato' else 'tarefas' }}/{{ item.id }}/lixeira">
+            <button type="submit" title="Mover pra lixeira">🗑</button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<button id="botao-adicionar" title="Adicionar">+</button>
+
+<dialog id="modal-adicionar">
+  <form method="post" action="/{{ 'contatos' if pilar == 'contato' else 'tarefas' }}" id="form-adicionar">
+    <h3>Novo {{ 'contato' if pilar == 'contato' else 'tarefa' }}</h3>
+
+    {% if pilar == "contato" %}
+      <label>Nome <input name="nome" required></label>
+      <label>Telefone <input name="telefone" required></label>
+      <label>Email <input name="email" type="email" required></label>
+      <label>Nota <textarea name="nota" id="campo-transcrito"></textarea></label>
+    {% else %}
+      <label>Título <input name="titulo" required></label>
+      <label>Descrição <textarea name="descricao" id="campo-transcrito"></textarea></label>
+      <label>Vincular a um contato (opcional)
+        <select name="contato_id">
+          <option value="">— nenhum —</option>
+          {% for contato in contatos %}
+          <option value="{{ contato.id }}">{{ contato.nome }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    {% endif %}
+
+    <label>Coluna
+      <select name="coluna_id">
+        {% for coluna in colunas %}
+        <option value="{{ coluna.id }}">{{ coluna.nome }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <button type="button" id="botao-gravar">🎙 Gravar nota por voz</button>
+    <span id="status-gravacao"></span>
+
+    <div class="botoes-modal">
+      <button type="button" id="botao-cancelar">Cancelar</button>
+      <button type="submit">Salvar</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}

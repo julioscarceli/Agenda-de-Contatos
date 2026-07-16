@@ -17,18 +17,23 @@ a lógica por trás de cada decisão.
   contato específico.
 - **Colunas personalizáveis** por usuário e por pilar (contato/tarefa),
   com um conjunto padrão pra não começar vazio.
-- **Transcrição de voz** (Whisper da OpenAI) pronta em `services.py`, ainda
-  sem interface conectada — vai plugar quando o frontend/extensão existir.
+- **Frontend web** (FastAPI + Jinja2): quadro Kanban com arrastar-e-soltar
+  (SortableJS) e captura de nota por voz (MediaRecorder + Whisper).
+- **CLI** (`cli.py`): interface de terminal equivalente, útil pra testar
+  sem abrir o navegador.
 
 ## Estrutura
 
 ```
 app/
-  models.py    # Coluna, Contato, Tarefa (dataclasses)
-  storage.py   # acesso ao Postgres (psycopg2, SQL puro), soft delete
-  services.py  # validação, regras de negócio, transcrição de voz
-cli.py         # menu de terminal (interface provisória, até o frontend)
-tests/         # testes de services.py contra um Postgres real
+  models.py       # Coluna, Contato, Tarefa (dataclasses)
+  storage.py      # acesso ao Postgres (psycopg2, SQL puro), soft delete
+  services.py     # validação, regras de negócio, transcrição de voz
+  main.py         # FastAPI: rotas de página + API do Kanban
+  templates/      # HTML (Jinja2) do quadro
+  static/         # CSS e JavaScript (drag-and-drop, gravação de voz)
+cli.py            # menu de terminal (interface alternativa)
+tests/            # testes de services.py contra um Postgres real
 ```
 
 ## Rodando localmente
@@ -41,7 +46,14 @@ zeabur service port-forward --id 6a590446725eab1a1db8003e --enable
 pip install -r requirements.txt
 cp .env.example .env
 # preencher DATABASE_URL (via `zeabur service instruction`), USUARIO_ID_TESTE e OPENAI_API_KEY
+
+# Frontend web:
+uvicorn app.main:app --reload
+# abre em http://127.0.0.1:8000
+
+# ou CLI de terminal:
 python cli.py
+
 # ao terminar:
 zeabur service port-forward --id 6a590446725eab1a1db8003e --disable
 ```
@@ -55,4 +67,5 @@ pytest tests/
 ## Status
 
 Backend com os dois pilares modularizado e validado (17 testes). Frontend
-(Kanban + voz) ainda não construído.
+web funcional (Kanban + drag-and-drop + voz), rodando local — deploy no
+Zeabur ainda pendente.
