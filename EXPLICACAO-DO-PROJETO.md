@@ -130,7 +130,22 @@ camada (o `cli.py` nunca fala direto com o banco, por exemplo).
 
 ---
 
-## 6. O que ainda falta (próximos passos combinados)
+## 6. Segurança aplicada (16/07/2026)
+
+- **Chaves de demonstração rotacionadas**: o template do Supabase
+  self-hosted sobe com `JWT_SECRET`/`ANON_KEY`/`SERVICE_ROLE_KEY` de
+  demonstração, documentados publicamente pelo próprio Supabase — qualquer
+  bot que conheça esse padrão comum acessaria o Studio/API. Foram
+  substituídos por valores gerados aleatoriamente.
+- **Postgres sem porta pública**: por padrão a porta 5432 não fica mais
+  exposta na internet — só serviços dentro do mesmo projeto Zeabur
+  conseguem acessar via rede interna. Pra dev local, reabilitar
+  temporariamente (ver `README.md`).
+- **Rate limiting e imagens atualizadas**: adiados por ora (rate limiting
+  fica pro Cloudflare ou pra própria aplicação FastAPI mais pra frente;
+  atualização de imagem vira revisão periódica, não ação única).
+
+## 7. O que ainda falta (próximos passos combinados)
 
 - [x] Provisionar o serviço de Postgres dentro do projeto Zeabur
       (`agenda-contatos`) e obter a `DATABASE_URL` real — feito via

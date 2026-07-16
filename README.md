@@ -30,10 +30,16 @@ tests/         # testes de services.py contra um Postgres real
 
 ## Rodando localmente
 
+O Postgres não tem porta pública exposta por padrão (prática de segurança —
+ver `EXPLICACAO-DO-PROJETO.md`). Pra rodar local, reabilitar temporariamente:
+
 ```bash
+zeabur service port-forward --id 6a590446725eab1a1db8003e --enable
 pip install -r requirements.txt
-cp .env.example .env  # preencher DATABASE_URL com um Postgres real
+cp .env.example .env  # preencher DATABASE_URL (pegar via `zeabur service instruction`)
 python cli.py
+# ao terminar:
+zeabur service port-forward --id 6a590446725eab1a1db8003e --disable
 ```
 
 ## Testes
