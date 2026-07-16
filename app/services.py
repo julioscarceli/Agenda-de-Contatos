@@ -1,3 +1,4 @@
+import json
 import os
 import re
 
@@ -10,9 +11,20 @@ REGEX_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 # Colunas que todo usuário novo ganha de cara, pra não abrir um quadro vazio.
 # Isso não trava nada — o usuário pode renomear, apagar ou criar quantas
-# quiser depois; é só um ponto de partida.
-COLUNAS_PADRAO_CONTATO = ["Lead", "Negociando", "Cliente", "Inativo"]
-COLUNAS_PADRAO_TAREFA = ["Executando", "Prioridade", "Lembretes", "Ideias"]
+# quiser depois; é só um ponto de partida. Cada uma já vem com uma cor, pra
+# virar a bolinha colorida do cabeçalho (estilo SpeckFlow).
+COLUNAS_PADRAO_CONTATO = [
+    ("Lead", "#6366f1"),
+    ("Negociando", "#f59e0b"),
+    ("Cliente", "#10b981"),
+    ("Inativo", "#94a3b8"),
+]
+COLUNAS_PADRAO_TAREFA = [
+    ("Executando", "#0ea5e9"),
+    ("Prioridade", "#ef4444"),
+    ("Lembretes", "#f59e0b"),
+    ("Ideias", "#a855f7"),
+]
 
 
 class ContatoInvalido(Exception):
@@ -31,12 +43,13 @@ class TarefaNaoEncontrada(Exception):
     pass
 
 
-def _validar_dados_contato(nome: str, telefone: str, email: str) -> None:
+# Um contato nasce só com o nome (é só isso que a voz dita — telefone
+# ditado por áudio é ruim de usar). Telefone e email ficam opcionais na
+# criação; o card vem em branco nesses campos até alguém digitar depois.
+def _validar_dados_contato(nome: str, telefone: str | None, email: str | None) -> None:
     if not nome.strip():
         raise ContatoInvalido("Nome não pode ser vazio.")
-    if not telefone.strip():
-        raise ContatoInvalido("Telefone não pode ser vazio.")
-    if not REGEX_EMAIL.match(email):
+    if email and not REGEX_EMAIL.match(email):
         raise ContatoInvalido(f"Email '{email}' é inválido.")
 
 
@@ -56,10 +69,10 @@ def garantir_colunas_padrao(conexao, usuario_id: str, pilar: str) -> list[Coluna
     if colunas_existentes:
         return colunas_existentes
 
-    nomes_padrao = COLUNAS_PADRAO_CONTATO if pilar == "contato" else COLUNAS_PADRAO_TAREFA
-    for ordem, nome in enumerate(nomes_padrao):
+    colunas_padrao = COLUNAS_PADRAO_CONTATO if pilar == "contato" else COLUNAS_PADRAO_TAREFA
+    for ordem, (nome, cor) in enumerate(colunas_padrao):
         storage.inserir_coluna(
-            conexao, Coluna(usuario_id=usuario_id, pilar=pilar, nome=nome, ordem=ordem)
+            conexao, Coluna(usuario_id=usuario_id, pilar=pilar, nome=nome, ordem=ordem, cor=cor)
         )
     return storage.listar_colunas(conexao, usuario_id, pilar)
 
@@ -71,13 +84,13 @@ def listar_colunas(conexao, usuario_id: str, pilar: str) -> list[Coluna]:
 # --- Contatos ------------------------------------------------------------
 
 def adicionar_contato(
-    conexao, usuario_id: str, nome: str, telefone: str, email: str,
-    coluna_id: int | None = None, nota: str | None = None,
+    conexao, usuario_id: str, nome: str, telefone: str | None = None, email: str | None = None,
+    coluna_id: int | None = None, nota: str | None = None, origem: str = "manual",
 ) -> Contato:
     _validar_dados_contato(nome, telefone, email)
     contato = Contato(
-        usuario_id=usuario_id, nome=nome, telefone=telefone, email=email,
-        coluna_id=coluna_id, nota=nota,
+        usuario_id=usuario_id, nome=nome, telefone=telefone or "", email=email or "",
+        coluna_id=coluna_id, nota=nota, origem=origem,
     )
     contato.id = storage.inserir_contato(conexao, contato)
     return contato
@@ -88,10 +101,11 @@ def listar_contatos(conexao, usuario_id: str) -> list[Contato]:
 
 
 def editar_contato(
-    conexao, id_contato: int, nome: str, telefone: str, email: str, nota: str | None = None,
+    conexao, id_contato: int, nome: str, telefone: str | None = None,
+    email: str | None = None, nota: str | None = None,
 ) -> Contato:
     _validar_dados_contato(nome, telefone, email)
-    atualizado = storage.atualizar_contato(conexao, id_contato, nome, telefone, email, nota)
+    atualizado = storage.atualizar_contato(conexao, id_contato, nome, telefone or "", email or "", nota)
     if not atualizado:
         raise ContatoNaoEncontrado(f"Contato {id_contato} não encontrado.")
     return storage.buscar_contato(conexao, id_contato)
@@ -183,3 +197,54 @@ def transcrever_audio(caminho_arquivo: str) -> str:
             model="whisper-1", file=arquivo_audio, language="pt"
         )
     return resposta.text
+
+
+# O "cérebro" do comando de voz: pega o texto já transcrito e pede pro GPT
+# devolver, em formato estruturado (JSON), o que a pessoa quis dizer — se é
+# pra criar um contato ou uma tarefa, em qual coluna, com quais campos.
+# Usamos o gpt-4o-mini (o modelo mais leve/rápido da OpenAI) porque essa
+# tarefa é simples — extrair alguns campos de uma frase curta — não precisa
+# do modelo mais caro e mais lento.
+PROMPT_INTERPRETADOR = """\
+Você organiza uma agenda de contatos e tarefas. A pessoa vai falar um
+comando em português pra criar um Contato ou uma Tarefa. Devolva SOMENTE um
+JSON (sem markdown, sem explicação) com estes campos:
+
+{{
+  "pilar": "contato" ou "tarefa",
+  "coluna_nome": nome da coluna mencionada (ou a mais parecida), ou null,
+  "nome": nome da pessoa (só se pilar for contato) — é a ÚNICA informação
+    que se espera por voz pra um contato; telefone, email e nota são
+    preenchidos depois, digitados no card, então ignore mesmo que a pessoa
+    fale mais alguma coisa,
+  "titulo": título da tarefa (só se pilar for tarefa), ou null,
+  "descricao": detalhe da tarefa (só se pilar for tarefa) — aqui pode vir
+    bem completo, tarefa é ditada por inteiro, ou null,
+  "contato_nome": nome do contato que a tarefa menciona vincular, ou null
+}}
+
+Colunas disponíveis de Contato: {colunas_contato}
+Colunas disponíveis de Tarefa: {colunas_tarefa}
+Contatos já cadastrados (pra vincular tarefa, se mencionado): {contatos}
+"""
+
+
+def interpretar_comando_de_voz(
+    texto: str, nomes_colunas_contato: list[str], nomes_colunas_tarefa: list[str],
+    nomes_contatos: list[str],
+) -> dict:
+    cliente = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    prompt = PROMPT_INTERPRETADOR.format(
+        colunas_contato=", ".join(nomes_colunas_contato),
+        colunas_tarefa=", ".join(nomes_colunas_tarefa),
+        contatos=", ".join(nomes_contatos) or "nenhum ainda",
+    )
+    resposta = cliente.chat.completions.create(
+        model="gpt-4o-mini",
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": texto},
+        ],
+    )
+    return json.loads(resposta.choices[0].message.content)

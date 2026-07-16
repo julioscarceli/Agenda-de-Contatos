@@ -19,13 +19,12 @@ USUARIO_ID = os.environ["USUARIO_ID_TESTE"]
 
 
 # Roda uma vez, quando o servidor sobe: garante que as tabelas existem antes
-# de qualquer requisição chegar. É o equivalente do "criar_tabelas" que o
-# cli.py chamava no início do __main__.
+# de qualquer requisição chegar.
 @asynccontextmanager
 async def ciclo_de_vida(app: FastAPI):
-    conexao = storage.conectar()
+    conexao = storage.obter_conexao()
     storage.criar_tabelas(conexao)
-    conexao.close()
+    storage.devolver_conexao(conexao)
     yield
 
 
@@ -34,14 +33,16 @@ templates = Jinja2Templates(directory="app/templates")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 
-# Abre uma conexão nova pra cada requisição e garante que ela fecha no
-# final, mesmo se a rota der erro no meio do caminho.
+# Empresta uma conexão do pool pra cada requisição e devolve no final —
+# bem mais rápido do que abrir uma conexão nova a cada clique, porque não
+# paga o preço de rede/autenticação toda vez (isso ficava bem perceptível
+# em dev local, com o banco do outro lado da internet no Zeabur).
 def get_conexao():
-    conexao = storage.conectar()
+    conexao = storage.obter_conexao()
     try:
         yield conexao
     finally:
-        conexao.close()
+        storage.devolver_conexao(conexao)
 
 
 # O "corpo" que o JavaScript manda quando arrasta um card pra outra coluna —
@@ -95,19 +96,35 @@ def pagina_tarefas(request: Request, conexao=Depends(get_conexao)):
 
 # --- Ações de Contato ------------------------------------------------------
 
-# Cria um contato a partir do formulário do modal "+" do quadro.
+# Cria um contato a partir do formulário manual (plano B).
 @app.post("/contatos")
 def criar_contato(
     nome: str = Form(...),
-    telefone: str = Form(...),
-    email: str = Form(...),
+    telefone: str = Form(None),
+    email: str = Form(None),
     nota: str = Form(None),
     coluna_id: int = Form(...),
     conexao=Depends(get_conexao),
 ):
     services.adicionar_contato(
-        conexao, USUARIO_ID, nome, telefone, email, coluna_id=coluna_id, nota=nota or None
+        conexao, USUARIO_ID, nome, telefone or None, email or None,
+        coluna_id=coluna_id, nota=nota or None,
     )
+    return RedirectResponse("/contatos", status_code=303)
+
+
+# Chamada pelo formulário de edição, que abre ao clicar num card — é aqui
+# que telefone/email/nota (o que a voz não dita) são digitados.
+@app.post("/contatos/{id_contato}/editar")
+def editar_contato(
+    id_contato: int,
+    nome: str = Form(...),
+    telefone: str = Form(None),
+    email: str = Form(None),
+    nota: str = Form(None),
+    conexao=Depends(get_conexao),
+):
+    services.editar_contato(conexao, id_contato, nome, telefone or None, email or None, nota or None)
     return RedirectResponse("/contatos", status_code=303)
 
 
@@ -153,6 +170,20 @@ def criar_tarefa(
     return RedirectResponse("/tarefas", status_code=303)
 
 
+# Edição por clique no card — diferente de Contato, aqui título e descrição
+# também podem ser digitados de novo, já que na Tarefa a voz também dita
+# tudo isso; é só uma forma alternativa de corrigir/completar.
+@app.post("/tarefas/{id_tarefa}/editar")
+def editar_tarefa(
+    id_tarefa: int,
+    titulo: str = Form(...),
+    descricao: str = Form(None),
+    conexao=Depends(get_conexao),
+):
+    services.editar_tarefa(conexao, id_tarefa, titulo, _texto_ou_none(descricao), prazo=None)
+    return RedirectResponse("/tarefas", status_code=303)
+
+
 @app.post("/tarefas/{id_tarefa}/mover")
 def mover_tarefa(id_tarefa: int, payload: MoverPayload, conexao=Depends(get_conexao)):
     services.mover_tarefa(conexao, id_tarefa, payload.coluna_id)
@@ -173,12 +204,42 @@ def tarefa_para_lixeira(id_tarefa: int, conexao=Depends(get_conexao)):
 
 # --- Voz -------------------------------------------------------------------
 
-# Recebe o áudio gravado no navegador (via MediaRecorder), salva num
-# arquivo temporário só pra passar pro Whisper, e devolve o texto
-# transcrito — o JavaScript usa isso pra preencher o campo de texto do
-# modal sozinho, sem o usuário digitar nada.
-@app.post("/transcrever")
-async def transcrever(audio: UploadFile = File(...)):
+# Acha a coluna certa pelo nome que a pessoa falou (ex: "lead"), tentando
+# um match exato primeiro e depois um match "parecido". Se não achar nada
+# (ou a pessoa não mencionou coluna nenhuma), cai na primeira coluna —
+# sempre cria em algum lugar, nunca falha por causa disso.
+def _resolver_coluna_id(nome_mencionado: str | None, colunas: list) -> int:
+    if nome_mencionado:
+        alvo = nome_mencionado.strip().lower()
+        for coluna in colunas:
+            if coluna.nome.lower() == alvo:
+                return coluna.id
+        for coluna in colunas:
+            if alvo in coluna.nome.lower() or coluna.nome.lower() in alvo:
+                return coluna.id
+    return colunas[0].id
+
+
+# Acha o contato que a pessoa mencionou pra vincular a uma tarefa (ex:
+# "pro Fulano"). Se não mencionou ninguém, ou não achou ninguém parecido,
+# a tarefa simplesmente nasce solta — não é erro, é só "sem vínculo".
+def _resolver_contato_id(nome_mencionado: str | None, contatos: list) -> int | None:
+    if not nome_mencionado:
+        return None
+    alvo = nome_mencionado.strip().lower()
+    for contato in contatos:
+        if alvo in contato.nome.lower():
+            return contato.id
+    return None
+
+
+# A rota principal do jeito novo de usar o sistema: recebe um áudio com um
+# comando falado, transcreve, manda pro GPT entender a intenção, e já cria
+# o Contato ou a Tarefa sozinho. Em Contato, só o nome é aproveitado da
+# voz (telefone/email/nota ficam pra digitar depois, clicando no card); em
+# Tarefa, título e descrição podem vir inteiros do que foi falado.
+@app.post("/comando-de-voz")
+async def comando_de_voz(audio: UploadFile = File(...), conexao=Depends(get_conexao)):
     with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as arquivo_temporario:
         arquivo_temporario.write(await audio.read())
         caminho = arquivo_temporario.name
@@ -188,4 +249,42 @@ async def transcrever(audio: UploadFile = File(...)):
     finally:
         os.remove(caminho)
 
-    return {"texto": texto}
+    colunas_contato = services.listar_colunas(conexao, USUARIO_ID, "contato")
+    colunas_tarefa = services.listar_colunas(conexao, USUARIO_ID, "tarefa")
+    contatos_existentes = services.listar_contatos(conexao, USUARIO_ID)
+
+    intencao = services.interpretar_comando_de_voz(
+        texto,
+        [coluna.nome for coluna in colunas_contato],
+        [coluna.nome for coluna in colunas_tarefa],
+        [contato.nome for contato in contatos_existentes],
+    )
+
+    try:
+        if intencao.get("pilar") == "tarefa":
+            coluna_id = _resolver_coluna_id(intencao.get("coluna_nome"), colunas_tarefa)
+            contato_id = _resolver_contato_id(intencao.get("contato_nome"), contatos_existentes)
+            tarefa = services.adicionar_tarefa(
+                conexao, USUARIO_ID, intencao.get("titulo") or texto,
+                intencao.get("descricao"), contato_id=contato_id,
+                coluna_id=coluna_id, origem="voz",
+            )
+            return {
+                "texto_transcrito": texto,
+                "mensagem": f"Tarefa \"{tarefa.titulo}\" criada.",
+                "pilar": "tarefa",
+            }
+
+        coluna_id = _resolver_coluna_id(intencao.get("coluna_nome"), colunas_contato)
+        contato = services.adicionar_contato(
+            conexao, USUARIO_ID, intencao.get("nome") or texto,
+            coluna_id=coluna_id, origem="voz",
+        )
+        return {
+            "texto_transcrito": texto,
+            "mensagem": f"Contato {contato.nome} criado — clique no card pra completar telefone/email.",
+            "pilar": "contato",
+        }
+
+    except (services.ContatoInvalido, services.TarefaInvalida) as erro:
+        return {"texto_transcrito": texto, "mensagem": f"Não consegui criar: {erro}", "erro": True}

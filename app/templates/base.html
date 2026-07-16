@@ -4,11 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Agenda de Contatos + Tarefas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <header class="topo">
-    <h1>Agenda de Contatos + Tarefas</h1>
+    <div class="marca">
+      <span class="logo-ponto"></span>
+      <h1>Agenda + Tarefas</h1>
+    </div>
     <nav>
       <a href="/contatos" class="{{ 'ativo' if pilar == 'contato' else '' }}">Contatos</a>
       <a href="/tarefas" class="{{ 'ativo' if pilar == 'tarefa' else '' }}">Tarefas</a>

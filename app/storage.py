@@ -2,15 +2,40 @@ import os
 
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 
 from app.models import Coluna, Contato, Tarefa
 
 
 # Abre uma conexão nova com o Postgres, lendo o endereço da variável de
 # ambiente DATABASE_URL (nunca escrita direto no código — sempre vem de
-# fora, do .env ou do ambiente do servidor).
+# fora, do .env ou do ambiente do servidor). Usada pelo CLI e pelos testes,
+# que abrem uma conexão só e a mantêm durante toda a sessão.
 def conectar():
     return psycopg2.connect(os.environ["DATABASE_URL"])
+
+
+# O site web (app/main.py) recebe muitas requisições curtas — cada clique
+# no quadro é uma requisição nova. Abrir uma conexão do zero a cada clique
+# é caro (principalmente hoje, em dev local, onde o banco está do outro
+# lado da internet, no Zeabur). Esse "pool" mantém algumas conexões já
+# abertas e prontas, emprestando uma pra cada requisição em vez de criar
+# uma nova toda vez.
+_pool: psycopg2.pool.ThreadedConnectionPool | None = None
+
+
+def obter_conexao():
+    global _pool
+    if _pool is None:
+        _pool = psycopg2.pool.ThreadedConnectionPool(1, 10, os.environ["DATABASE_URL"])
+    return _pool.getconn()
+
+
+# Devolve a conexão pro pool (em vez de fechar de verdade), pra ela poder
+# ser reaproveitada na próxima requisição.
+def devolver_conexao(conexao) -> None:
+    if _pool is not None:
+        _pool.putconn(conexao)
 
 
 # Cria as três tabelas do projeto se elas ainda não existirem. Pode rodar

@@ -191,16 +191,47 @@ diferente, o JavaScript manda um `fetch` pro backend
 `services.mover_contato` que o CLI já usava, só chamada por um clique em
 vez de um número digitado.
 
-**Gravar e transcrever voz.** O botão "🎙 Gravar" usa a API `MediaRecorder`
-do próprio navegador pra gravar um áudio curto. Quando você para de
-gravar, o áudio é enviado pro backend (`POST /transcrever`), que chama
-`services.transcrever_audio` (Whisper) e devolve o texto — o JavaScript
-cola esse texto direto no campo de nota/descrição, sem você digitar nada.
+**Comando de voz — o jeito principal de criar.** Depois de testar na
+prática, ficou claro que digitar um formulário toda vez ia contra a ideia
+original (voz em primeiro lugar). O botão de microfone (ícone SVG, fixo
+embaixo, igual ao SpeckFlow) virou o caminho padrão: um clique grava, o
+próximo manda o áudio pro backend (`POST /comando-de-voz`), que:
+
+1. Transcreve com Whisper (`services.transcrever_audio`).
+2. Manda o texto pro `gpt-4o-mini` (`services.interpretar_comando_de_voz`)
+   pedindo um JSON com a intenção: é contato ou tarefa, qual coluna, e os
+   campos ditados.
+3. Chama `services.adicionar_contato` ou `services.adicionar_tarefa` — a
+   mesma função que o formulário manual e o CLI usam.
+
+**Regra que veio de testar de verdade:** dizer telefone em voz alta é
+péssima experiência. Por isso, em **Contato** a voz só aproveita o
+**nome** (vira o título do card) — telefone/email/nota nascem em branco.
+Em **Tarefa** não tem essa restrição: título e descrição podem vir
+inteiros do que foi falado. Pra completar o que a voz não pegou, cada
+card tem um ✎ que abre um formulário de edição (digitando) — voz cria,
+digitação completa/corrige.
 
 **Por que essa arquitetura reaproveita tudo:** `main.py` não tem regra de
-negócio nenhuma — ele só traduz cliques em chamadas de `services.py`,
-exatamente como `cli.py` já fazia. Isso confirma a promessa lá do início
-do documento (seção 1): trocar a interface não exigiu duplicar nada.
+negócio nenhuma — ele só traduz cliques/áudio em chamadas de
+`services.py`, exatamente como `cli.py` já fazia. Isso confirma a
+promessa lá do início do documento (seção 1): trocar a interface não
+exigiu duplicar nada.
+
+**Pool de conexões.** Rodando local, cada clique abria uma conexão nova
+com o Postgres (que fica no Zeabur, do outro lado da internet) — isso
+ficou perceptível como lentidão real ao trocar de aba ou excluir um
+contato. `storage.py` ganhou um pool de conexões
+(`psycopg2.pool.ThreadedConnectionPool`) que o `main.py` usa: em vez de
+abrir/fechar uma conexão a cada requisição, empresta uma já aberta do
+pool e devolve no final.
+
+**Cuidado que aprendemos na marra:** `pytest` e o `uvicorn` local usam o
+mesmo banco (não existe banco de teste separado ainda). Rodar os testes
+com o servidor no ar ao mesmo tempo corrompe os dados — os testes
+truncam/recriam a tabela `colunas` várias vezes, e se isso acontecer
+enquanto alguém está usando a página ao vivo, sobra um estado misturado.
+Nunca rodar os dois ao mesmo tempo.
 
 ---
 

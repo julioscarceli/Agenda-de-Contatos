@@ -1,30 +1,48 @@
 {% extends "base.html" %}
 
 {% block conteudo %}
+<div class="barra-topo-quadro">
+  <span id="status-comando"></span>
+  <a href="#" id="link-adicionar-manual" class="link-discreto">+ adicionar manualmente</a>
+</div>
+
 <div class="quadro">
   {% for coluna in colunas %}
   <div class="coluna" data-coluna-id="{{ coluna.id }}">
-    <h2>{{ coluna.nome }}</h2>
+    <div class="coluna-cabecalho">
+      <span class="bolinha" style="background:{{ coluna.cor or '#94a3b8' }}"></span>
+      <h2>{{ coluna.nome }}</h2>
+      <span class="contagem">{{ itens_por_coluna.get(coluna.id, [])|length }}</span>
+    </div>
 
     <div class="lista-cards" data-coluna-id="{{ coluna.id }}">
       {% for item in itens_por_coluna.get(coluna.id, []) %}
-      <div class="card" data-item-id="{{ item.id }}">
-        {% if pilar == "contato" %}
-          <strong>{{ item.nome }}</strong>
-          <div class="detalhe">{{ item.telefone }} · {{ item.email }}</div>
-          {% if item.nota %}<div class="nota">{{ item.nota }}</div>{% endif %}
+      {% if pilar == "contato" %}
+      <div class="card" data-item-id="{{ item.id }}" style="border-left-color:{{ coluna.cor or '#94a3b8' }}"
+           data-nome="{{ item.nome }}" data-telefone="{{ item.telefone }}"
+           data-email="{{ item.email }}" data-nota="{{ item.nota or '' }}">
+        <strong>{{ item.nome }}</strong>
+        {% if item.telefone or item.email %}
+        <div class="detalhe">{{ item.telefone }}{% if item.email %} · {{ item.email }}{% endif %}</div>
         {% else %}
-          <strong>{{ item.titulo }}</strong>
-          {% if item.descricao %}<div class="detalhe">{{ item.descricao }}</div>{% endif %}
-          {% if item.contato_id %}<div class="nota">contato #{{ item.contato_id }}</div>{% endif %}
+        <div class="detalhe detalhe-vazio">clique pra completar telefone/email</div>
         {% endif %}
+        {% if item.nota %}<div class="nota">{{ item.nota }}</div>{% endif %}
+      {% else %}
+      <div class="card" data-item-id="{{ item.id }}" style="border-left-color:{{ coluna.cor or '#94a3b8' }}"
+           data-titulo="{{ item.titulo }}" data-descricao="{{ item.descricao or '' }}">
+        <strong>{{ item.titulo }}</strong>
+        {% if item.descricao %}<div class="detalhe">{{ item.descricao }}</div>{% endif %}
+        {% if item.contato_id %}<span class="etiqueta">contato #{{ item.contato_id }}</span>{% endif %}
+      {% endif %}
 
         <div class="acoes-card">
+          <button type="button" class="acao-editar" title="Editar">✎</button>
           <form method="post" action="/{{ 'contatos' if pilar == 'contato' else 'tarefas' }}/{{ item.id }}/resolver">
-            <button type="submit" title="Marcar como resolvido">✓</button>
+            <button type="submit" class="acao-resolver" title="Marcar como resolvido">✓</button>
           </form>
           <form method="post" action="/{{ 'contatos' if pilar == 'contato' else 'tarefas' }}/{{ item.id }}/lixeira">
-            <button type="submit" title="Mover pra lixeira">🗑</button>
+            <button type="submit" class="acao-lixeira" title="Mover pra lixeira">🗑</button>
           </form>
         </div>
       </div>
@@ -34,20 +52,52 @@
   {% endfor %}
 </div>
 
-<button id="botao-adicionar" title="Adicionar">+</button>
+<!-- Microfone: jeito principal de criar. Um clique começa a gravar o
+     comando, o próximo clique termina e o backend cuida do resto. -->
+<button id="botao-comando-voz" title="Falar comando">
+  <svg viewBox="0 0 24 24" class="icone-mic" fill="currentColor" aria-hidden="true">
+    <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+    <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+  </svg>
+</button>
 
+<!-- Editar um card existente (digitando) — telefone/email/nota de Contato,
+     ou ajustar título/descrição de Tarefa. -->
+<dialog id="modal-editar">
+  <form method="post" id="form-editar">
+    <h3>Editar {{ 'contato' if pilar == 'contato' else 'tarefa' }}</h3>
+
+    {% if pilar == "contato" %}
+      <label>Nome <input name="nome" id="editar-nome" required></label>
+      <label>Telefone <input name="telefone" id="editar-telefone"></label>
+      <label>Email <input name="email" type="email" id="editar-email"></label>
+      <label>Nota <textarea name="nota" id="editar-nota"></textarea></label>
+    {% else %}
+      <label>Título <input name="titulo" id="editar-titulo" required></label>
+      <label>Descrição <textarea name="descricao" id="editar-descricao"></textarea></label>
+    {% endif %}
+
+    <div class="botoes-modal">
+      <button type="button" id="botao-cancelar-editar" class="botao-secundario">Cancelar</button>
+      <button type="submit" class="botao-primario">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Formulário manual — plano B, pra quando digitar for mais rápido que
+     falar. -->
 <dialog id="modal-adicionar">
   <form method="post" action="/{{ 'contatos' if pilar == 'contato' else 'tarefas' }}" id="form-adicionar">
-    <h3>Novo {{ 'contato' if pilar == 'contato' else 'tarefa' }}</h3>
+    <h3>Novo {{ 'contato' if pilar == 'contato' else 'tarefa' }} (manual)</h3>
 
     {% if pilar == "contato" %}
       <label>Nome <input name="nome" required></label>
-      <label>Telefone <input name="telefone" required></label>
-      <label>Email <input name="email" type="email" required></label>
-      <label>Nota <textarea name="nota" id="campo-transcrito"></textarea></label>
+      <label>Telefone (opcional) <input name="telefone"></label>
+      <label>Email (opcional) <input name="email" type="email"></label>
+      <label>Nota <textarea name="nota"></textarea></label>
     {% else %}
       <label>Título <input name="titulo" required></label>
-      <label>Descrição <textarea name="descricao" id="campo-transcrito"></textarea></label>
+      <label>Descrição <textarea name="descricao"></textarea></label>
       <label>Vincular a um contato (opcional)
         <select name="contato_id">
           <option value="">— nenhum —</option>
@@ -66,12 +116,9 @@
       </select>
     </label>
 
-    <button type="button" id="botao-gravar">🎙 Gravar nota por voz</button>
-    <span id="status-gravacao"></span>
-
     <div class="botoes-modal">
-      <button type="button" id="botao-cancelar">Cancelar</button>
-      <button type="submit">Salvar</button>
+      <button type="button" id="botao-cancelar" class="botao-secundario">Cancelar</button>
+      <button type="submit" class="botao-primario">Salvar</button>
     </div>
   </form>
 </dialog>

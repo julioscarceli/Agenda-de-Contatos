@@ -12,7 +12,7 @@ from app import services
 def test_garantir_colunas_padrao_cria_quando_nao_existe(conexao, usuario_id):
     colunas = services.garantir_colunas_padrao(conexao, usuario_id, "contato")
 
-    assert [c.nome for c in colunas] == services.COLUNAS_PADRAO_CONTATO
+    assert [c.nome for c in colunas] == [nome for nome, _cor in services.COLUNAS_PADRAO_CONTATO]
 
 
 def test_garantir_colunas_padrao_nao_duplica(conexao, usuario_id):
