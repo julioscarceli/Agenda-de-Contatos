@@ -3,6 +3,7 @@
 {% block conteudo %}
 <div class="barra-topo-quadro">
   <span id="status-comando"></span>
+  <a href="/{{ 'contatos' if pilar == 'contato' else 'tarefas' }}/{{ 'resolvidos' if pilar == 'contato' else 'resolvidas' }}" class="link-discreto">Resolvidos</a>
   <a href="#" id="link-adicionar-manual" class="link-discreto">+ adicionar manualmente</a>
 </div>
 

@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block conteudo %}
+<div class="barra-topo-quadro">
+  <a href="/{{ 'contatos' if pilar == 'contato' else 'tarefas' }}" class="link-discreto">← voltar pro quadro</a>
+</div>
+
+<h2 class="titulo-secao">Resolvidos</h2>
+
+<div class="lista-resolvidos">
+  {% for item in itens %}
+  <div class="item-resolvido">
+    <div class="item-resolvido-texto">
+      {% if pilar == "contato" %}
+        <strong>{{ item.nome }}</strong>
+        <div class="detalhe">{{ item.telefone }}{% if item.email %} · {{ item.email }}{% endif %}</div>
+      {% else %}
+        <strong>{{ item.titulo }}</strong>
+        {% if item.descricao %}<div class="detalhe">{{ item.descricao }}</div>{% endif %}
+      {% endif %}
+    </div>
+    <form method="post" action="/{{ 'contatos' if pilar == 'contato' else 'tarefas' }}/{{ item.id }}/reabrir">
+      <button type="submit" class="botao-secundario">Reabrir</button>
+    </form>
+  </div>
+  {% else %}
+  <p class="vazio">Nada por aqui ainda — o que você marcar como resolvido aparece nessa lista.</p>
+  {% endfor %}
+</div>
+{% endblock %}

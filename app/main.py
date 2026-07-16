@@ -94,6 +94,31 @@ def pagina_tarefas(request: Request, conexao=Depends(get_conexao)):
     return _montar_quadro(request, conexao, "tarefa")
 
 
+# Vista simples (sem Kanban, sem arrastar) dos itens já resolvidos — eles
+# nunca são apagados de verdade, só saem do quadro ativo. Aqui dá pra ver
+# de novo, e "reabrir" se precisar voltar a mexer naquele contato/tarefa.
+def _montar_resolvidos(request: Request, conexao, pilar: str):
+    if pilar == "contato":
+        itens = services.listar_contatos(conexao, USUARIO_ID, status="resolvido")
+    else:
+        itens = services.listar_tarefas(conexao, USUARIO_ID, status="resolvido")
+
+    return templates.TemplateResponse(
+        "resolvidos.html",
+        {"request": request, "pilar": pilar, "itens": itens},
+    )
+
+
+@app.get("/contatos/resolvidos")
+def pagina_contatos_resolvidos(request: Request, conexao=Depends(get_conexao)):
+    return _montar_resolvidos(request, conexao, "contato")
+
+
+@app.get("/tarefas/resolvidas")
+def pagina_tarefas_resolvidas(request: Request, conexao=Depends(get_conexao)):
+    return _montar_resolvidos(request, conexao, "tarefa")
+
+
 # --- Ações de Coluna (fase) --------------------------------------------------
 
 def _pagina_do_pilar(pilar: str) -> str:
@@ -169,6 +194,13 @@ def contato_para_lixeira(id_contato: int, conexao=Depends(get_conexao)):
     return RedirectResponse("/contatos", status_code=303)
 
 
+# Chamada na vista de "Resolvidos" — volta o contato pro quadro ativo.
+@app.post("/contatos/{id_contato}/reabrir")
+def reabrir_contato(id_contato: int, conexao=Depends(get_conexao)):
+    services.reabrir_contato(conexao, id_contato)
+    return RedirectResponse("/contatos/resolvidos", status_code=303)
+
+
 # --- Ações de Tarefa --------------------------------------------------------
 
 def _texto_ou_none(valor: str | None) -> str | None:
@@ -222,6 +254,13 @@ def resolver_tarefa(id_tarefa: int, conexao=Depends(get_conexao)):
 def tarefa_para_lixeira(id_tarefa: int, conexao=Depends(get_conexao)):
     services.mover_tarefa_para_lixeira(conexao, id_tarefa)
     return RedirectResponse("/tarefas", status_code=303)
+
+
+# Chamada na vista de "Resolvidas" — volta a tarefa pro quadro ativo.
+@app.post("/tarefas/{id_tarefa}/reabrir")
+def reabrir_tarefa(id_tarefa: int, conexao=Depends(get_conexao)):
+    services.reabrir_tarefa(conexao, id_tarefa)
+    return RedirectResponse("/tarefas/resolvidas", status_code=303)
 
 
 # --- Voz -------------------------------------------------------------------

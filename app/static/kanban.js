@@ -1,3 +1,9 @@
+// Esse script só faz sentido na página do quadro Kanban (tem microfone,
+// drag-and-drop, modais). Na página de "Resolvidos" (lista simples) nada
+// disso existe, então nem tenta rodar — evita erro no console por
+// procurar um botão que não está ali.
+if (document.querySelector(".quadro")) {
+
 // Descobre se estamos no quadro de Contatos ou de Tarefas, pra saber em
 // qual rota da API mandar as ações (/contatos/... ou /tarefas/...).
 const pilar = document.querySelector("main").dataset.pilar;
@@ -153,3 +159,5 @@ linkAdicionarManual.addEventListener("click", (evento) => {
   modalAdicionar.showModal();
 });
 botaoCancelar.addEventListener("click", () => modalAdicionar.close());
+
+}

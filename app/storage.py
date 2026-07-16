@@ -192,11 +192,11 @@ def inserir_contato(conexao, contato: Contato) -> int:
 
 # Lista os contatos "vivos" de um usuário (não apaga nada, só esconde quem
 # está resolvido ou na lixeira).
-def listar_contatos(conexao, usuario_id: str) -> list[Contato]:
+def listar_contatos(conexao, usuario_id: str, status: str = "ativo") -> list[Contato]:
     with conexao.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
         cursor.execute(
-            "SELECT * FROM contatos WHERE usuario_id = %s AND status = 'ativo' ORDER BY id",
-            (usuario_id,),
+            "SELECT * FROM contatos WHERE usuario_id = %s AND status = %s ORDER BY id",
+            (usuario_id, status),
         )
         linhas = cursor.fetchall()
     return [_linha_para_contato(linha) for linha in linhas]
@@ -289,23 +289,26 @@ def inserir_tarefa(conexao, tarefa: Tarefa) -> int:
     return id_gerado
 
 
-# Lista as tarefas "vivas" de um usuário. Se contato_id for passado, filtra
-# só as tarefas daquele contato específico (útil pra mostrar a timeline dele).
-def listar_tarefas(conexao, usuario_id: str, contato_id: int | None = None) -> list[Tarefa]:
+# Lista as tarefas de um usuário filtrando por status (ativo, resolvido ou
+# lixeira). Se contato_id for passado, filtra só as tarefas daquele contato
+# específico (útil pra mostrar a timeline dele).
+def listar_tarefas(
+    conexao, usuario_id: str, contato_id: int | None = None, status: str = "ativo"
+) -> list[Tarefa]:
     with conexao.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
         if contato_id is None:
             cursor.execute(
-                "SELECT * FROM tarefas WHERE usuario_id = %s AND status = 'ativo' ORDER BY id",
-                (usuario_id,),
+                "SELECT * FROM tarefas WHERE usuario_id = %s AND status = %s ORDER BY id",
+                (usuario_id, status),
             )
         else:
             cursor.execute(
                 """
                 SELECT * FROM tarefas
-                WHERE usuario_id = %s AND contato_id = %s AND status = 'ativo'
+                WHERE usuario_id = %s AND contato_id = %s AND status = %s
                 ORDER BY id
                 """,
-                (usuario_id, contato_id),
+                (usuario_id, contato_id, status),
             )
         linhas = cursor.fetchall()
     return [_linha_para_tarefa(linha) for linha in linhas]

@@ -3,17 +3,25 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Agenda de Contatos + Tarefas</title>
+  <title>TalkFlow</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <header class="topo">
     <div class="marca">
-      <span class="logo-ponto"></span>
-      <h1>Agenda + Tarefas</h1>
+      <span class="logo-passaro" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <ellipse cx="10.5" cy="14.5" rx="6.5" ry="4.5"/>
+          <circle cx="16.5" cy="9" r="3.6"/>
+          <polygon points="19.6,8.3 23,7 19.8,10.4"/>
+          <circle cx="17.6" cy="8" r="0.6" fill="#0f172a"/>
+          <path d="M6 16c-1.3 1-2.7 1.3-4 1" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+        </svg>
+      </span>
+      <h1>TalkFlow</h1>
     </div>
     <nav>
       <a href="/contatos" class="{{ 'ativo' if pilar == 'contato' else '' }}">Contatos</a>

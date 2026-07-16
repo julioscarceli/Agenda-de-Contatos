@@ -40,7 +40,28 @@ body {
   background: linear-gradient(135deg, var(--cor-primaria), #a855f7);
 }
 
-.topo h1 { font-size: 1rem; font-weight: 600; margin: 0; letter-spacing: 0.01em; }
+.logo-passaro {
+  display: flex;
+  color: #a855f7;
+  animation: cantar 2.4s ease-in-out infinite;
+}
+
+.logo-passaro svg { width: 22px; height: 22px; }
+
+/* Um balancinho sutil, tipo o passarinho "cantando" — nada de mais,
+   só um movimento pequeno pra dar vida ao logo. */
+@keyframes cantar {
+  0%, 100% { transform: rotate(0deg) translateY(0); }
+  50% { transform: rotate(-6deg) translateY(-1px); }
+}
+
+.topo h1 {
+  font-family: "Space Grotesk", "Inter", system-ui, sans-serif;
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: 0.01em;
+}
 
 .topo nav a {
   color: #94a3b8;
@@ -215,6 +236,7 @@ main { padding: 2rem; max-width: 1400px; margin: 0 auto; }
 .barra-topo-quadro {
   display: flex;
   align-items: center;
+  gap: 1.25rem;
   min-height: 1.5rem;
   margin-bottom: 1.25rem;
 }
@@ -226,13 +248,45 @@ main { padding: 2rem; max-width: 1400px; margin: 0 auto; }
 }
 
 .link-discreto {
-  margin-left: auto;
   font-size: 0.8rem;
   color: var(--cor-texto-suave);
   text-decoration: none;
 }
 
+.barra-topo-quadro a.link-discreto:first-of-type { margin-left: auto; }
+
 .link-discreto:hover { color: var(--cor-texto); text-decoration: underline; }
+
+/* --- Vista de "Resolvidos" (lista simples, sem Kanban) -------------------- */
+
+.titulo-secao {
+  font-family: "Space Grotesk", "Inter", system-ui, sans-serif;
+  font-size: 1.2rem;
+  margin: 0 0 1rem 0;
+}
+
+.lista-resolvidos {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-width: 560px;
+}
+
+.item-resolvido {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: var(--cor-superficie);
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  box-shadow: var(--sombra-card);
+}
+
+.item-resolvido-texto strong { font-size: 0.92rem; }
+.item-resolvido-texto .detalhe { font-size: 0.8rem; color: var(--cor-texto-suave); margin-top: 0.2rem; }
+
+.vazio { color: var(--cor-texto-suave); font-size: 0.9rem; }
 
 /* --- Microfone flutuante (estilo SpeckFlow) -------------------------------- */
 
