@@ -46,7 +46,7 @@ body {
   animation: cantar 2.4s ease-in-out infinite;
 }
 
-.logo-passaro svg { width: 22px; height: 22px; }
+.logo-passaro svg { width: 30px; height: 30px; }
 
 /* Um balancinho sutil, tipo o passarinho "cantando" — nada de mais,
    só um movimento pequeno pra dar vida ao logo. */
