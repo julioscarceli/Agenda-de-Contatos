@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block conteudo %}
+<div class="barra-topo-quadro">
+  <a href="/contatos" class="link-discreto">← voltar pro quadro</a>
+</div>
+
+<h2 class="titulo-secao">Administração de acesso</h2>
+
+{% if token_gerado %}
+<div class="item-resolvido" style="flex-direction:column; align-items:flex-start; gap:0.4rem;">
+  <strong>Token gerado pra {{ email_gerado }} — copia agora, não aparece de novo:</strong>
+  <code style="background:var(--cor-fundo); padding:0.5rem; border-radius:8px; width:100%; word-break:break-all;">{{ token_gerado }}</code>
+</div>
+{% endif %}
+
+<form method="post" action="/admin/convidar" style="display:flex; gap:0.6rem; margin:1.2rem 0;">
+  <input name="email" type="email" required placeholder="email-da-pessoa@exemplo.com"
+         style="flex:1; padding:0.5rem 0.6rem; border:1px solid var(--cor-borda); border-radius:8px;">
+  <button type="submit" class="botao-primario" style="border:none; border-radius:8px; padding:0.6rem 1rem; font-weight:600; cursor:pointer;">
+    Gerar acesso
+  </button>
+</form>
+
+<h3 style="font-size:0.9rem; color:var(--cor-texto-suave);">Quem já tem acesso</h3>
+<div class="lista-resolvidos">
+  {% for usuario in usuarios %}
+  <div class="item-resolvido">
+    <div class="item-resolvido-texto">
+      <strong>{{ usuario.email }}</strong>
+      <div class="detalhe">cadastrado em {{ usuario.criado_em.strftime('%d/%m/%Y') }}</div>
+    </div>
+    <form method="post" action="/admin/{{ usuario.id }}/revogar" onsubmit="return confirm('Revogar acesso de {{ usuario.email }}?')">
+      <button type="submit" class="botao-secundario">Revogar</button>
+    </form>
+  </div>
+  {% else %}
+  <p class="vazio">Ninguém cadastrado ainda.</p>
+  {% endfor %}
+</div>
+{% endblock %}

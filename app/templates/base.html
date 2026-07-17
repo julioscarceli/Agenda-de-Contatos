@@ -28,6 +28,7 @@
     <nav>
       <a href="/contatos" class="{{ 'ativo' if pilar == 'contato' else '' }}">Contatos</a>
       <a href="/tarefas" class="{{ 'ativo' if pilar == 'tarefa' else '' }}">Tarefas</a>
+      {% if eh_admin %}<a href="/admin">Admin</a>{% endif %}
       <a href="/logout">Sair</a>
     </nav>
   </header>

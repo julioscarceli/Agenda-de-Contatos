@@ -140,6 +140,23 @@ def buscar_usuario_por_token_fixo(conexao, token_hash: str, email: str | None = 
     return str(linha[0]) if linha else None
 
 
+# Lista quem tem acesso hoje — usada na página /admin, pra saber quem já
+# foi convidado sem precisar abrir o banco na mão.
+def listar_tokens_fixos(conexao) -> list[dict]:
+    with conexao.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+        cursor.execute("SELECT id, email, criado_em FROM tokens_fixos ORDER BY criado_em DESC")
+        return cursor.fetchall()
+
+
+# Tira o acesso de alguém — apaga o token, a pessoa não consegue mais
+# entrar com ele (mas os dados dela continuam no banco, só o login que
+# para de funcionar).
+def apagar_token_fixo(conexao, token_id: int) -> None:
+    with conexao.cursor() as cursor:
+        cursor.execute("DELETE FROM tokens_fixos WHERE id = %s", (token_id,))
+    conexao.commit()
+
+
 # --- Colunas -----------------------------------------------------------
 
 # Traduz uma linha crua do banco (um dicionário) pra um objeto Coluna.

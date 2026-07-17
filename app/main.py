@@ -28,6 +28,11 @@ def get_conexao():
 
 COOKIE_TOKEN_FIXO = "token_fixo"
 
+# Só essa pessoa (o próprio Julio) enxerga a página /admin — o nome da
+# variável é antigo (época do usuário de teste fixo), mas hoje é só o
+# id do administrador de verdade.
+ADMIN_USUARIO_ID = os.environ["USUARIO_ID_TESTE"]
+
 
 # Sinaliza "essa pessoa não está logada" pra quem chamar a dependência
 # abaixo — capturado pelo exception_handler logo depois, que manda todo
@@ -44,6 +49,14 @@ def usuario_id_atual(request: Request, conexao=Depends(get_conexao)) -> str:
     token = request.cookies.get(COOKIE_TOKEN_FIXO)
     usuario_id = storage.buscar_usuario_por_token_fixo(conexao, services.hash_token_fixo(token)) if token else None
     if usuario_id is None:
+        raise NaoAutenticado()
+    return usuario_id
+
+
+# Trava extra só pra rotas de administração (/admin) — precisa estar
+# logado E ser o administrador, não qualquer pessoa convidada.
+def exigir_admin(usuario_id=Depends(usuario_id_atual)) -> str:
+    if usuario_id != ADMIN_USUARIO_ID:
         raise NaoAutenticado()
     return usuario_id
 
@@ -120,6 +133,38 @@ def logout():
     return resposta
 
 
+# --- Administração de acesso (só o admin vê) --------------------------------
+#
+# Substitui o script `cadastrar_usuario.py` rodado no terminal: a mesma
+# lógica (services.criar_acesso_convidado), só que numa página — cola o
+# email, clica, e o token aparece na tela pra copiar.
+
+@app.get("/admin")
+def pagina_admin(request: Request, conexao=Depends(get_conexao), usuario_id=Depends(exigir_admin)):
+    usuarios = storage.listar_tokens_fixos(conexao)
+    return templates.TemplateResponse(
+        "admin.html", {"request": request, "usuarios": usuarios, "token_gerado": None, "email_gerado": None}
+    )
+
+
+@app.post("/admin/convidar")
+def convidar_usuario(
+    request: Request, email: str = Form(...), conexao=Depends(get_conexao), usuario_id=Depends(exigir_admin)
+):
+    token = services.criar_acesso_convidado(conexao, email)
+    usuarios = storage.listar_tokens_fixos(conexao)
+    return templates.TemplateResponse(
+        "admin.html",
+        {"request": request, "usuarios": usuarios, "token_gerado": token, "email_gerado": email},
+    )
+
+
+@app.post("/admin/{token_id}/revogar")
+def revogar_usuario(token_id: int, conexao=Depends(get_conexao), usuario_id=Depends(exigir_admin)):
+    storage.apagar_token_fixo(conexao, token_id)
+    return RedirectResponse("/admin", status_code=303)
+
+
 # Monta os dados de um quadro (Contatos ou Tarefas) pro template desenhar:
 # as colunas do usuário e os cards já agrupados dentro de cada uma.
 def _montar_quadro(request: Request, conexao, usuario_id: str, pilar: str):
@@ -144,6 +189,7 @@ def _montar_quadro(request: Request, conexao, usuario_id: str, pilar: str):
             "colunas": colunas,
             "itens_por_coluna": itens_por_coluna,
             "contatos": contatos_para_vincular,
+            "eh_admin": usuario_id == ADMIN_USUARIO_ID,
         },
     )
 
@@ -169,7 +215,7 @@ def _montar_resolvidos(request: Request, conexao, usuario_id: str, pilar: str):
 
     return templates.TemplateResponse(
         "resolvidos.html",
-        {"request": request, "pilar": pilar, "itens": itens},
+        {"request": request, "pilar": pilar, "itens": itens, "eh_admin": usuario_id == ADMIN_USUARIO_ID},
     )
 
 
