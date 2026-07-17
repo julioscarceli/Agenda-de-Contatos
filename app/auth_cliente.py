@@ -16,18 +16,21 @@ class FalhaNoLogin(Exception):
     pass
 
 
-# Pede pro Auth mandar o código de 6 dígitos pro email informado. Se o
-# email nunca foi usado antes, o Auth já cria a conta na hora
-# (create_user=True) — não existe uma tela de cadastro separada.
+# Pede pro Auth mandar o código de 6 dígitos pro email informado.
+# create_user=False de propósito: acesso é só por convite — o admin
+# cadastra o email antes (ver cadastrar_usuario.py), e só depois disso o
+# código pode ser enviado. Email desconhecido nunca vira conta sozinho.
 def enviar_codigo(email: str) -> None:
     resposta = httpx.post(
         f"{SUPABASE_URL}/auth/v1/otp",
-        json={"email": email, "create_user": True},
+        json={"email": email, "create_user": False},
         headers={"apikey": SUPABASE_ANON_KEY, "Content-Type": "application/json"},
         timeout=10,
     )
     if resposta.status_code >= 400:
-        raise FalhaNoLogin(f"Não consegui enviar o código: {resposta.text}")
+        raise FalhaNoLogin(
+            "Esse email ainda não tem acesso liberado. Peça pro administrador cadastrar você primeiro."
+        )
 
 
 # Confere o código digitado. Se bater, o Auth devolve um token de acesso

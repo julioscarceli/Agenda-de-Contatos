@@ -11,23 +11,66 @@
   <div style="background:white; padding:2rem; border-radius:14px; box-shadow:var(--sombra-card); width:320px;">
     <h1 style="font-family:'Space Grotesk'; font-size:1.3rem; margin:0 0 0.3rem 0;">TalkFlow</h1>
     <p style="color:var(--cor-texto-suave); font-size:0.85rem; margin:0 0 1.2rem 0;">
-      Sem senha — a gente manda um código de acesso pro seu email.
+      Acesso só por convite — se seu email já foi liberado, a gente manda um código pra ele.
     </p>
 
-    {% if erro %}
-    <p style="color:var(--cor-perigo); font-size:0.85rem;">{{ erro }}</p>
-    {% endif %}
+    <p id="mensagem" style="font-size:0.85rem; {% if erro %}color:var(--cor-perigo);{% else %}display:none;{% endif %}">
+      {{ erro or "" }}
+    </p>
 
-    <form method="post" action="/login" style="display:flex; flex-direction:column; gap:0.7rem;">
+    <form id="form-login" method="post" action="/login/verificar" style="display:flex; flex-direction:column; gap:0.7rem;">
       <label style="font-size:0.8rem; font-weight:600; color:var(--cor-texto-suave);">
         Email
-        <input name="email" type="email" required
+        <input id="campo-email" name="email" type="email" required value="{{ email or '' }}"
                style="width:100%; padding:0.5rem 0.6rem; border:1px solid var(--cor-borda); border-radius:8px; margin-top:0.25rem;">
       </label>
-      <button type="submit" class="botao-primario" style="border:none; border-radius:8px; padding:0.6rem; font-weight:600; cursor:pointer;">
+
+      <button id="botao-enviar" type="button" class="botao-primario"
+              style="border:none; border-radius:8px; padding:0.6rem; font-weight:600; cursor:pointer;">
         Enviar código
+      </button>
+
+      <label style="font-size:0.8rem; font-weight:600; color:var(--cor-texto-suave);">
+        Código
+        <input id="campo-codigo" name="codigo" {% if not codigo_enviado %}disabled{% endif %}
+               placeholder="Peça o código primeiro"
+               style="width:100%; padding:0.5rem 0.6rem; border:1px solid var(--cor-borda); border-radius:8px; margin-top:0.25rem; letter-spacing:0.3em; text-align:center; font-size:1.1rem;">
+      </label>
+
+      <button id="botao-entrar" type="submit" class="botao-primario" {% if not codigo_enviado %}disabled{% endif %}
+              style="border:none; border-radius:8px; padding:0.6rem; font-weight:600; cursor:pointer;">
+        Entrar
       </button>
     </form>
   </div>
+
+  <script>
+    // A pessoa digita o email e clica em "Enviar código" — isso não recarrega
+    // a página, só pede pro back-end mandar o código (se aquele email tiver
+    // sido liberado antes) e libera o campo de código logo abaixo.
+    document.getElementById("botao-enviar").addEventListener("click", async () => {
+      const email = document.getElementById("campo-email").value;
+      const mensagem = document.getElementById("mensagem");
+      const resposta = await fetch("/login/enviar-codigo", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "email=" + encodeURIComponent(email),
+      });
+      const dados = await resposta.json();
+
+      if (dados.ok) {
+        mensagem.style.display = "block";
+        mensagem.style.color = "var(--cor-sucesso, green)";
+        mensagem.textContent = "Código enviado — confere seu email.";
+        document.getElementById("campo-codigo").disabled = false;
+        document.getElementById("botao-entrar").disabled = false;
+        document.getElementById("campo-codigo").focus();
+      } else {
+        mensagem.style.display = "block";
+        mensagem.style.color = "var(--cor-perigo)";
+        mensagem.textContent = dados.erro;
+      }
+    });
+  </script>
 </body>
 </html>

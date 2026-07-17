@@ -92,18 +92,22 @@ def raiz():
 
 @app.get("/login")
 def pagina_login(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request, "erro": None})
+    return templates.TemplateResponse(
+        "login.html", {"request": request, "erro": None, "email": None, "codigo_enviado": False}
+    )
 
 
-@app.post("/login")
-def enviar_codigo_login(request: Request, email: str = Form(...)):
+# Chamada via JavaScript (fetch), não recarrega a página — só pede pro Auth
+# mandar o código, e devolve um JSON simples pro front saber se deu certo.
+# Só manda código pra email que o admin já cadastrou antes (ver
+# cadastrar_usuario.py); email desconhecido cai no "erro".
+@app.post("/login/enviar-codigo")
+def enviar_codigo_login(email: str = Form(...)):
     try:
         auth_cliente.enviar_codigo(email)
     except auth_cliente.FalhaNoLogin as erro:
-        return templates.TemplateResponse("login.html", {"request": request, "erro": str(erro)})
-    return templates.TemplateResponse(
-        "login_verificar.html", {"request": request, "email": email, "erro": None}
-    )
+        return {"ok": False, "erro": str(erro)}
+    return {"ok": True}
 
 
 @app.post("/login/verificar")
@@ -112,7 +116,8 @@ def verificar_codigo_login(request: Request, email: str = Form(...), codigo: str
         resultado = auth_cliente.verificar_codigo(email, codigo)
     except auth_cliente.FalhaNoLogin as erro:
         return templates.TemplateResponse(
-            "login_verificar.html", {"request": request, "email": email, "erro": str(erro)}
+            "login.html",
+            {"request": request, "erro": str(erro), "email": email, "codigo_enviado": True},
         )
 
     resposta = RedirectResponse("/contatos", status_code=303)
