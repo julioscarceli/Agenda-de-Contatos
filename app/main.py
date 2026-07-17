@@ -13,14 +13,30 @@ from app import auth_cliente, services, storage
 
 load_dotenv()
 
-# Enquanto o login por email+token não está ligado nas rotas de verdade
-# (só a tela e a chamada ao Auth já existem), todo mundo que usa o site
-# ainda age como esse usuário de teste fixo — igual o cli.py já fazia.
-# Ver EXPLICACAO-DO-PROJETO.md pra entender por que essa ligação final
-# ficou pendente (depende de configurar o SMTP do Auth primeiro).
-USUARIO_ID = os.environ["USUARIO_ID_TESTE"]
-
 COOKIE_SESSAO = "sessao"
+
+
+# Sinaliza "essa pessoa não está logada" pra quem chamar a dependência
+# abaixo — capturado pelo exception_handler logo depois, que manda todo
+# mundo sem sessão válida de volta pra tela de login.
+class NaoAutenticado(Exception):
+    pass
+
+
+# Dependência que toda rota protegida usa em vez do antigo USUARIO_ID
+# fixo: lê o cookie de sessão, pergunta ao Auth de quem é aquele token,
+# e devolve o usuario_id de quem está navegando. Sem cookie válido, a
+# pessoa nem chega a ver a página — cai direto no login.
+def usuario_id_atual(request: Request) -> str:
+    token = request.cookies.get(COOKIE_SESSAO)
+    if not token:
+        raise NaoAutenticado()
+
+    usuario = auth_cliente.obter_usuario(token)
+    if usuario is None:
+        raise NaoAutenticado()
+
+    return usuario["id"]
 
 
 # Roda uma vez, quando o servidor sobe: garante que as tabelas existem antes
@@ -36,6 +52,13 @@ async def ciclo_de_vida(app: FastAPI):
 app = FastAPI(lifespan=ciclo_de_vida)
 templates = Jinja2Templates(directory="app/templates")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+
+# Qualquer rota que dependa de usuario_id_atual e não tenha sessão válida
+# cai aqui — em vez de estourar erro 500, redireciona pro login.
+@app.exception_handler(NaoAutenticado)
+def redirecionar_para_login(request: Request, excecao: NaoAutenticado):
+    return RedirectResponse("/login")
 
 
 # Empresta uma conexão do pool pra cada requisição e devolve no final —
@@ -63,11 +86,9 @@ def raiz():
 
 # --- Login sem senha (email + código) ---------------------------------------
 #
-# Pendente de ligar nas rotas de verdade: essas telas e chamadas ao Auth já
-# funcionam, mas as rotas de Contatos/Tarefas ainda usam o USUARIO_ID fixo
-# em vez de exigir esse login. Falta o SMTP (Resend) configurado no Auth
-# pra o código realmente chegar por email — sem isso não dá pra testar o
-# fluxo de ponta a ponta.
+# A pessoa digita o email, recebe um código de 6 dígitos (via Resend) e usa
+# esse código pra entrar — sem senha nenhuma. Todas as rotas de Contatos/
+# Tarefas/Colunas abaixo exigem essa sessão (usuario_id_atual).
 
 @app.get("/login")
 def pagina_login(request: Request):
@@ -111,15 +132,15 @@ def logout():
 
 # Monta os dados de um quadro (Contatos ou Tarefas) pro template desenhar:
 # as colunas do usuário e os cards já agrupados dentro de cada uma.
-def _montar_quadro(request: Request, conexao, pilar: str):
-    colunas = services.garantir_colunas_padrao(conexao, USUARIO_ID, pilar)
+def _montar_quadro(request: Request, conexao, usuario_id: str, pilar: str):
+    colunas = services.garantir_colunas_padrao(conexao, usuario_id, pilar)
 
     if pilar == "contato":
-        itens = services.listar_contatos(conexao, USUARIO_ID)
+        itens = services.listar_contatos(conexao, usuario_id)
         contatos_para_vincular = None
     else:
-        itens = services.listar_tarefas(conexao, USUARIO_ID)
-        contatos_para_vincular = services.listar_contatos(conexao, USUARIO_ID)
+        itens = services.listar_tarefas(conexao, usuario_id)
+        contatos_para_vincular = services.listar_contatos(conexao, usuario_id)
 
     itens_por_coluna = {coluna.id: [] for coluna in colunas}
     for item in itens:
@@ -138,23 +159,23 @@ def _montar_quadro(request: Request, conexao, pilar: str):
 
 
 @app.get("/contatos")
-def pagina_contatos(request: Request, conexao=Depends(get_conexao)):
-    return _montar_quadro(request, conexao, "contato")
+def pagina_contatos(request: Request, conexao=Depends(get_conexao), usuario_id=Depends(usuario_id_atual)):
+    return _montar_quadro(request, conexao, usuario_id, "contato")
 
 
 @app.get("/tarefas")
-def pagina_tarefas(request: Request, conexao=Depends(get_conexao)):
-    return _montar_quadro(request, conexao, "tarefa")
+def pagina_tarefas(request: Request, conexao=Depends(get_conexao), usuario_id=Depends(usuario_id_atual)):
+    return _montar_quadro(request, conexao, usuario_id, "tarefa")
 
 
 # Vista simples (sem Kanban, sem arrastar) dos itens já resolvidos — eles
 # nunca são apagados de verdade, só saem do quadro ativo. Aqui dá pra ver
 # de novo, e "reabrir" se precisar voltar a mexer naquele contato/tarefa.
-def _montar_resolvidos(request: Request, conexao, pilar: str):
+def _montar_resolvidos(request: Request, conexao, usuario_id: str, pilar: str):
     if pilar == "contato":
-        itens = services.listar_contatos(conexao, USUARIO_ID, status="resolvido")
+        itens = services.listar_contatos(conexao, usuario_id, status="resolvido")
     else:
-        itens = services.listar_tarefas(conexao, USUARIO_ID, status="resolvido")
+        itens = services.listar_tarefas(conexao, usuario_id, status="resolvido")
 
     return templates.TemplateResponse(
         "resolvidos.html",
@@ -163,13 +184,13 @@ def _montar_resolvidos(request: Request, conexao, pilar: str):
 
 
 @app.get("/contatos/resolvidos")
-def pagina_contatos_resolvidos(request: Request, conexao=Depends(get_conexao)):
-    return _montar_resolvidos(request, conexao, "contato")
+def pagina_contatos_resolvidos(request: Request, conexao=Depends(get_conexao), usuario_id=Depends(usuario_id_atual)):
+    return _montar_resolvidos(request, conexao, usuario_id, "contato")
 
 
 @app.get("/tarefas/resolvidas")
-def pagina_tarefas_resolvidas(request: Request, conexao=Depends(get_conexao)):
-    return _montar_resolvidos(request, conexao, "tarefa")
+def pagina_tarefas_resolvidas(request: Request, conexao=Depends(get_conexao), usuario_id=Depends(usuario_id_atual)):
+    return _montar_resolvidos(request, conexao, usuario_id, "tarefa")
 
 
 # --- Ações de Coluna (fase) --------------------------------------------------
@@ -181,7 +202,8 @@ def _pagina_do_pilar(pilar: str) -> str:
 # Renomear uma fase — chamado pelo lápis pequeno ao lado do nome da coluna.
 @app.post("/colunas/{id_coluna}/renomear")
 def renomear_coluna(
-    id_coluna: int, nome: str = Form(...), pilar: str = Form(...), conexao=Depends(get_conexao)
+    id_coluna: int, nome: str = Form(...), pilar: str = Form(...),
+    conexao=Depends(get_conexao), usuario_id=Depends(usuario_id_atual),
 ):
     services.renomear_coluna(conexao, id_coluna, nome)
     return RedirectResponse(_pagina_do_pilar(pilar), status_code=303)
@@ -189,8 +211,11 @@ def renomear_coluna(
 
 # Criar uma fase nova — chamado pelo "+ nova fase" no final do quadro.
 @app.post("/colunas")
-def criar_coluna(pilar: str = Form(...), nome: str = Form(...), conexao=Depends(get_conexao)):
-    services.criar_coluna(conexao, USUARIO_ID, pilar, nome)
+def criar_coluna(
+    pilar: str = Form(...), nome: str = Form(...),
+    conexao=Depends(get_conexao), usuario_id=Depends(usuario_id_atual),
+):
+    services.criar_coluna(conexao, usuario_id, pilar, nome)
     return RedirectResponse(_pagina_do_pilar(pilar), status_code=303)
 
 
@@ -205,9 +230,10 @@ def criar_contato(
     nota: str = Form(None),
     coluna_id: int = Form(...),
     conexao=Depends(get_conexao),
+    usuario_id=Depends(usuario_id_atual),
 ):
     services.adicionar_contato(
-        conexao, USUARIO_ID, nome, telefone or None, email or None,
+        conexao, usuario_id, nome, telefone or None, email or None,
         coluna_id=coluna_id, nota=nota or None,
     )
     return RedirectResponse("/contatos", status_code=303)
@@ -223,34 +249,40 @@ def editar_contato(
     email: str = Form(None),
     nota: str = Form(None),
     conexao=Depends(get_conexao),
+    usuario_id=Depends(usuario_id_atual),
 ):
-    services.editar_contato(conexao, id_contato, nome, telefone or None, email or None, nota or None)
+    services.editar_contato(
+        conexao, id_contato, nome, usuario_id, telefone or None, email or None, nota or None
+    )
     return RedirectResponse("/contatos", status_code=303)
 
 
 # Chamada pelo JavaScript quando o usuário arrasta o card pra outra coluna.
 @app.post("/contatos/{id_contato}/mover")
-def mover_contato(id_contato: int, payload: MoverPayload, conexao=Depends(get_conexao)):
-    services.mover_contato(conexao, id_contato, payload.coluna_id)
+def mover_contato(
+    id_contato: int, payload: MoverPayload,
+    conexao=Depends(get_conexao), usuario_id=Depends(usuario_id_atual),
+):
+    services.mover_contato(conexao, id_contato, payload.coluna_id, usuario_id)
     return {"ok": True}
 
 
 @app.post("/contatos/{id_contato}/resolver")
-def resolver_contato(id_contato: int, conexao=Depends(get_conexao)):
-    services.resolver_contato(conexao, id_contato)
+def resolver_contato(id_contato: int, conexao=Depends(get_conexao), usuario_id=Depends(usuario_id_atual)):
+    services.resolver_contato(conexao, id_contato, usuario_id)
     return RedirectResponse("/contatos", status_code=303)
 
 
 @app.post("/contatos/{id_contato}/lixeira")
-def contato_para_lixeira(id_contato: int, conexao=Depends(get_conexao)):
-    services.mover_contato_para_lixeira(conexao, id_contato)
+def contato_para_lixeira(id_contato: int, conexao=Depends(get_conexao), usuario_id=Depends(usuario_id_atual)):
+    services.mover_contato_para_lixeira(conexao, id_contato, usuario_id)
     return RedirectResponse("/contatos", status_code=303)
 
 
 # Chamada na vista de "Resolvidos" — volta o contato pro quadro ativo.
 @app.post("/contatos/{id_contato}/reabrir")
-def reabrir_contato(id_contato: int, conexao=Depends(get_conexao)):
-    services.reabrir_contato(conexao, id_contato)
+def reabrir_contato(id_contato: int, conexao=Depends(get_conexao), usuario_id=Depends(usuario_id_atual)):
+    services.reabrir_contato(conexao, id_contato, usuario_id)
     return RedirectResponse("/contatos/resolvidos", status_code=303)
 
 
@@ -269,9 +301,10 @@ def criar_tarefa(
     coluna_id: int = Form(...),
     contato_id: int = Form(None),
     conexao=Depends(get_conexao),
+    usuario_id=Depends(usuario_id_atual),
 ):
     services.adicionar_tarefa(
-        conexao, USUARIO_ID, titulo, _texto_ou_none(descricao),
+        conexao, usuario_id, titulo, _texto_ou_none(descricao),
         contato_id=contato_id, coluna_id=coluna_id,
     )
     return RedirectResponse("/tarefas", status_code=303)
@@ -286,33 +319,37 @@ def editar_tarefa(
     titulo: str = Form(...),
     descricao: str = Form(None),
     conexao=Depends(get_conexao),
+    usuario_id=Depends(usuario_id_atual),
 ):
-    services.editar_tarefa(conexao, id_tarefa, titulo, _texto_ou_none(descricao), prazo=None)
+    services.editar_tarefa(conexao, id_tarefa, titulo, _texto_ou_none(descricao), None, usuario_id)
     return RedirectResponse("/tarefas", status_code=303)
 
 
 @app.post("/tarefas/{id_tarefa}/mover")
-def mover_tarefa(id_tarefa: int, payload: MoverPayload, conexao=Depends(get_conexao)):
-    services.mover_tarefa(conexao, id_tarefa, payload.coluna_id)
+def mover_tarefa(
+    id_tarefa: int, payload: MoverPayload,
+    conexao=Depends(get_conexao), usuario_id=Depends(usuario_id_atual),
+):
+    services.mover_tarefa(conexao, id_tarefa, payload.coluna_id, usuario_id)
     return {"ok": True}
 
 
 @app.post("/tarefas/{id_tarefa}/resolver")
-def resolver_tarefa(id_tarefa: int, conexao=Depends(get_conexao)):
-    services.resolver_tarefa(conexao, id_tarefa)
+def resolver_tarefa(id_tarefa: int, conexao=Depends(get_conexao), usuario_id=Depends(usuario_id_atual)):
+    services.resolver_tarefa(conexao, id_tarefa, usuario_id)
     return RedirectResponse("/tarefas", status_code=303)
 
 
 @app.post("/tarefas/{id_tarefa}/lixeira")
-def tarefa_para_lixeira(id_tarefa: int, conexao=Depends(get_conexao)):
-    services.mover_tarefa_para_lixeira(conexao, id_tarefa)
+def tarefa_para_lixeira(id_tarefa: int, conexao=Depends(get_conexao), usuario_id=Depends(usuario_id_atual)):
+    services.mover_tarefa_para_lixeira(conexao, id_tarefa, usuario_id)
     return RedirectResponse("/tarefas", status_code=303)
 
 
 # Chamada na vista de "Resolvidas" — volta a tarefa pro quadro ativo.
 @app.post("/tarefas/{id_tarefa}/reabrir")
-def reabrir_tarefa(id_tarefa: int, conexao=Depends(get_conexao)):
-    services.reabrir_tarefa(conexao, id_tarefa)
+def reabrir_tarefa(id_tarefa: int, conexao=Depends(get_conexao), usuario_id=Depends(usuario_id_atual)):
+    services.reabrir_tarefa(conexao, id_tarefa, usuario_id)
     return RedirectResponse("/tarefas/resolvidas", status_code=303)
 
 
@@ -353,7 +390,11 @@ def _resolver_contato_id(nome_mencionado: str | None, contatos: list) -> int | N
 # voz (telefone/email/nota ficam pra digitar depois, clicando no card); em
 # Tarefa, título e descrição podem vir inteiros do que foi falado.
 @app.post("/comando-de-voz")
-async def comando_de_voz(audio: UploadFile = File(...), conexao=Depends(get_conexao)):
+async def comando_de_voz(
+    audio: UploadFile = File(...),
+    conexao=Depends(get_conexao),
+    usuario_id=Depends(usuario_id_atual),
+):
     with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as arquivo_temporario:
         arquivo_temporario.write(await audio.read())
         caminho = arquivo_temporario.name
@@ -363,9 +404,9 @@ async def comando_de_voz(audio: UploadFile = File(...), conexao=Depends(get_cone
     finally:
         os.remove(caminho)
 
-    colunas_contato = services.listar_colunas(conexao, USUARIO_ID, "contato")
-    colunas_tarefa = services.listar_colunas(conexao, USUARIO_ID, "tarefa")
-    contatos_existentes = services.listar_contatos(conexao, USUARIO_ID)
+    colunas_contato = services.listar_colunas(conexao, usuario_id, "contato")
+    colunas_tarefa = services.listar_colunas(conexao, usuario_id, "tarefa")
+    contatos_existentes = services.listar_contatos(conexao, usuario_id)
 
     intencao = services.interpretar_comando_de_voz(
         texto,
@@ -379,7 +420,7 @@ async def comando_de_voz(audio: UploadFile = File(...), conexao=Depends(get_cone
             coluna_id = _resolver_coluna_id(intencao.get("coluna_nome"), colunas_tarefa)
             contato_id = _resolver_contato_id(intencao.get("contato_nome"), contatos_existentes)
             tarefa = services.adicionar_tarefa(
-                conexao, USUARIO_ID, intencao.get("titulo") or texto,
+                conexao, usuario_id, intencao.get("titulo") or texto,
                 intencao.get("descricao"), contato_id=contato_id,
                 coluna_id=coluna_id, origem="voz",
             )
@@ -391,7 +432,7 @@ async def comando_de_voz(audio: UploadFile = File(...), conexao=Depends(get_cone
 
         coluna_id = _resolver_coluna_id(intencao.get("coluna_nome"), colunas_contato)
         contato = services.adicionar_contato(
-            conexao, USUARIO_ID, intencao.get("nome") or texto,
+            conexao, usuario_id, intencao.get("nome") or texto,
             coluna_id=coluna_id, origem="voz",
         )
         return {

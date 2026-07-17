@@ -44,16 +44,16 @@ def test_editar_contato(conexao, usuario_id):
     contato = services.adicionar_contato(conexao, usuario_id, "Ana", "11999990000", "ana@email.com")
 
     editado = services.editar_contato(
-        conexao, contato.id, "Ana Souza", "11988887777", "ana.souza@email.com", nota="ligar sexta"
+        conexao, contato.id, "Ana Souza", usuario_id, "11988887777", "ana.souza@email.com", nota="ligar sexta"
     )
 
     assert editado.nome == "Ana Souza"
     assert editado.nota == "ligar sexta"
 
 
-def test_editar_contato_inexistente(conexao):
+def test_editar_contato_inexistente(conexao, usuario_id):
     with pytest.raises(services.ContatoNaoEncontrado):
-        services.editar_contato(conexao, 999, "Nome", "0000", "email@email.com")
+        services.editar_contato(conexao, 999, "Nome", usuario_id, "0000", "email@email.com")
 
 
 def test_mover_contato_de_coluna(conexao, usuario_id):
@@ -62,7 +62,7 @@ def test_mover_contato_de_coluna(conexao, usuario_id):
         conexao, usuario_id, "Ana", "11999990000", "ana@email.com", coluna_id=colunas[0].id
     )
 
-    movido = services.mover_contato(conexao, contato.id, colunas[1].id)
+    movido = services.mover_contato(conexao, contato.id, colunas[1].id, usuario_id)
 
     assert movido.coluna_id == colunas[1].id
 
@@ -70,7 +70,7 @@ def test_mover_contato_de_coluna(conexao, usuario_id):
 def test_resolver_contato_some_da_listagem(conexao, usuario_id):
     contato = services.adicionar_contato(conexao, usuario_id, "Ana", "11999990000", "ana@email.com")
 
-    services.resolver_contato(conexao, contato.id)
+    services.resolver_contato(conexao, contato.id, usuario_id)
 
     assert services.listar_contatos(conexao, usuario_id) == []
 
@@ -78,14 +78,14 @@ def test_resolver_contato_some_da_listagem(conexao, usuario_id):
 def test_mover_contato_para_lixeira_some_da_listagem(conexao, usuario_id):
     contato = services.adicionar_contato(conexao, usuario_id, "Ana", "11999990000", "ana@email.com")
 
-    services.mover_contato_para_lixeira(conexao, contato.id)
+    services.mover_contato_para_lixeira(conexao, contato.id, usuario_id)
 
     assert services.listar_contatos(conexao, usuario_id) == []
 
 
-def test_resolver_contato_inexistente(conexao):
+def test_resolver_contato_inexistente(conexao, usuario_id):
     with pytest.raises(services.ContatoNaoEncontrado):
-        services.resolver_contato(conexao, 999)
+        services.resolver_contato(conexao, 999, usuario_id)
 
 
 # --- Tarefas ------------------------------------------------------------
@@ -123,7 +123,7 @@ def test_mover_tarefa_de_coluna(conexao, usuario_id):
         conexao, usuario_id, "Ligar pro fornecedor", coluna_id=colunas[0].id
     )
 
-    movida = services.mover_tarefa(conexao, tarefa.id, colunas[1].id)
+    movida = services.mover_tarefa(conexao, tarefa.id, colunas[1].id, usuario_id)
 
     assert movida.coluna_id == colunas[1].id
 
@@ -131,7 +131,7 @@ def test_mover_tarefa_de_coluna(conexao, usuario_id):
 def test_resolver_tarefa_some_da_listagem(conexao, usuario_id):
     tarefa = services.adicionar_tarefa(conexao, usuario_id, "Ligar pro fornecedor")
 
-    services.resolver_tarefa(conexao, tarefa.id)
+    services.resolver_tarefa(conexao, tarefa.id, usuario_id)
 
     assert services.listar_tarefas(conexao, usuario_id) == []
 
@@ -139,11 +139,11 @@ def test_resolver_tarefa_some_da_listagem(conexao, usuario_id):
 def test_mover_tarefa_para_lixeira_some_da_listagem(conexao, usuario_id):
     tarefa = services.adicionar_tarefa(conexao, usuario_id, "Ligar pro fornecedor")
 
-    services.mover_tarefa_para_lixeira(conexao, tarefa.id)
+    services.mover_tarefa_para_lixeira(conexao, tarefa.id, usuario_id)
 
     assert services.listar_tarefas(conexao, usuario_id) == []
 
 
-def test_editar_tarefa_inexistente(conexao):
+def test_editar_tarefa_inexistente(conexao, usuario_id):
     with pytest.raises(services.TarefaNaoEncontrada):
-        services.editar_tarefa(conexao, 999, "Novo título", None, None)
+        services.editar_tarefa(conexao, 999, "Novo título", None, None, usuario_id)

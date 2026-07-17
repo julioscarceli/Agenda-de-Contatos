@@ -138,10 +138,14 @@ def listar_colunas(conexao, usuario_id: str, pilar: str) -> list[Coluna]:
 
 
 # Troca só o nome de uma coluna (o usuário decidiu chamar "Lead" de outra
-# coisa, por exemplo) — a etapa continua a mesma, com os mesmos cards.
-def atualizar_nome_coluna(conexao, coluna_id: int, nome: str) -> bool:
+# coisa, por exemplo) — a etapa continua a mesma, com os mesmos cards. O
+# filtro por usuario_id garante que ninguém renomeia coluna de outra conta.
+def atualizar_nome_coluna(conexao, coluna_id: int, nome: str, usuario_id: str) -> bool:
     with conexao.cursor() as cursor:
-        cursor.execute("UPDATE colunas SET nome = %s WHERE id = %s", (nome, coluna_id))
+        cursor.execute(
+            "UPDATE colunas SET nome = %s WHERE id = %s AND usuario_id = %s",
+            (nome, coluna_id, usuario_id),
+        )
         atualizado = cursor.rowcount > 0
     conexao.commit()
     return atualizado
@@ -202,18 +206,27 @@ def listar_contatos(conexao, usuario_id: str, status: str = "ativo") -> list[Con
     return [_linha_para_contato(linha) for linha in linhas]
 
 
-def buscar_contato(conexao, id_contato: int) -> Contato | None:
+# Busca um contato só se ele for do usuário informado — impede que alguém
+# logado veja/edite o contato de outra conta só adivinhando o id.
+def buscar_contato(conexao, id_contato: int, usuario_id: str) -> Contato | None:
     with conexao.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
-        cursor.execute("SELECT * FROM contatos WHERE id = %s", (id_contato,))
+        cursor.execute(
+            "SELECT * FROM contatos WHERE id = %s AND usuario_id = %s", (id_contato, usuario_id)
+        )
         linha = cursor.fetchone()
     return _linha_para_contato(linha) if linha else None
 
 
-def atualizar_contato(conexao, id_contato: int, nome: str, telefone: str, email: str, nota: str | None) -> bool:
+def atualizar_contato(
+    conexao, id_contato: int, nome: str, telefone: str, email: str, nota: str | None, usuario_id: str
+) -> bool:
     with conexao.cursor() as cursor:
         cursor.execute(
-            "UPDATE contatos SET nome = %s, telefone = %s, email = %s, nota = %s WHERE id = %s",
-            (nome, telefone, email, nota, id_contato),
+            """
+            UPDATE contatos SET nome = %s, telefone = %s, email = %s, nota = %s
+            WHERE id = %s AND usuario_id = %s
+            """,
+            (nome, telefone, email, nota, id_contato, usuario_id),
         )
         atualizado = cursor.rowcount > 0
     conexao.commit()
@@ -221,10 +234,11 @@ def atualizar_contato(conexao, id_contato: int, nome: str, telefone: str, email:
 
 
 # Move o contato pra outra coluna (ex: arrastar de "Lead" pra "Cliente").
-def mover_contato_de_coluna(conexao, id_contato: int, coluna_id: int) -> bool:
+def mover_contato_de_coluna(conexao, id_contato: int, coluna_id: int, usuario_id: str) -> bool:
     with conexao.cursor() as cursor:
         cursor.execute(
-            "UPDATE contatos SET coluna_id = %s WHERE id = %s", (coluna_id, id_contato)
+            "UPDATE contatos SET coluna_id = %s WHERE id = %s AND usuario_id = %s",
+            (coluna_id, id_contato, usuario_id),
         )
         movido = cursor.rowcount > 0
     conexao.commit()
@@ -233,10 +247,11 @@ def mover_contato_de_coluna(conexao, id_contato: int, coluna_id: int) -> bool:
 
 # Muda o status do contato (ativo / resolvido / lixeira) — é o nosso "soft
 # delete": nunca roda DELETE de verdade num contato.
-def mudar_status_contato(conexao, id_contato: int, status: str) -> bool:
+def mudar_status_contato(conexao, id_contato: int, status: str, usuario_id: str) -> bool:
     with conexao.cursor() as cursor:
         cursor.execute(
-            "UPDATE contatos SET status = %s WHERE id = %s", (status, id_contato)
+            "UPDATE contatos SET status = %s WHERE id = %s AND usuario_id = %s",
+            (status, id_contato, usuario_id),
         )
         alterado = cursor.rowcount > 0
     conexao.commit()
@@ -314,38 +329,49 @@ def listar_tarefas(
     return [_linha_para_tarefa(linha) for linha in linhas]
 
 
-def buscar_tarefa(conexao, id_tarefa: int) -> Tarefa | None:
+# Mesma ideia de buscar_contato: só acha a tarefa se ela for do usuário
+# informado, pra ninguém mexer na tarefa de outra conta pelo id.
+def buscar_tarefa(conexao, id_tarefa: int, usuario_id: str) -> Tarefa | None:
     with conexao.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
-        cursor.execute("SELECT * FROM tarefas WHERE id = %s", (id_tarefa,))
+        cursor.execute(
+            "SELECT * FROM tarefas WHERE id = %s AND usuario_id = %s", (id_tarefa, usuario_id)
+        )
         linha = cursor.fetchone()
     return _linha_para_tarefa(linha) if linha else None
 
 
-def atualizar_tarefa(conexao, id_tarefa: int, titulo: str, descricao: str | None, prazo) -> bool:
+def atualizar_tarefa(
+    conexao, id_tarefa: int, titulo: str, descricao: str | None, prazo, usuario_id: str
+) -> bool:
     with conexao.cursor() as cursor:
         cursor.execute(
-            "UPDATE tarefas SET titulo = %s, descricao = %s, prazo = %s WHERE id = %s",
-            (titulo, descricao, prazo, id_tarefa),
+            """
+            UPDATE tarefas SET titulo = %s, descricao = %s, prazo = %s
+            WHERE id = %s AND usuario_id = %s
+            """,
+            (titulo, descricao, prazo, id_tarefa, usuario_id),
         )
         atualizado = cursor.rowcount > 0
     conexao.commit()
     return atualizado
 
 
-def mover_tarefa_de_coluna(conexao, id_tarefa: int, coluna_id: int) -> bool:
+def mover_tarefa_de_coluna(conexao, id_tarefa: int, coluna_id: int, usuario_id: str) -> bool:
     with conexao.cursor() as cursor:
         cursor.execute(
-            "UPDATE tarefas SET coluna_id = %s WHERE id = %s", (coluna_id, id_tarefa)
+            "UPDATE tarefas SET coluna_id = %s WHERE id = %s AND usuario_id = %s",
+            (coluna_id, id_tarefa, usuario_id),
         )
         movida = cursor.rowcount > 0
     conexao.commit()
     return movida
 
 
-def mudar_status_tarefa(conexao, id_tarefa: int, status: str) -> bool:
+def mudar_status_tarefa(conexao, id_tarefa: int, status: str, usuario_id: str) -> bool:
     with conexao.cursor() as cursor:
         cursor.execute(
-            "UPDATE tarefas SET status = %s WHERE id = %s", (status, id_tarefa)
+            "UPDATE tarefas SET status = %s WHERE id = %s AND usuario_id = %s",
+            (status, id_tarefa, usuario_id),
         )
         alterado = cursor.rowcount > 0
     conexao.commit()

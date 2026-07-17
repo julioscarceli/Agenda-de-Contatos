@@ -77,24 +77,24 @@ def menu_contatos(conexao) -> None:
                 telefone = input("Novo telefone: ")
                 email = input("Novo email: ")
                 nota = input("Nova nota (opcional): ") or None
-                services.editar_contato(conexao, id_contato, nome, telefone, email, nota)
+                services.editar_contato(conexao, id_contato, nome, USUARIO_ID, telefone, email, nota)
                 print("Contato atualizado com sucesso!")
 
             elif escolha == "4":
                 id_contato = int(input("ID do contato: "))
                 print("Colunas disponíveis:", ", ".join(f"{c.id}={c.nome}" for c in colunas))
                 id_coluna = int(input("Mover pra qual coluna (ID): "))
-                services.mover_contato(conexao, id_contato, id_coluna)
+                services.mover_contato(conexao, id_contato, id_coluna, USUARIO_ID)
                 print("Contato movido de coluna.")
 
             elif escolha == "5":
                 id_contato = int(input("ID do contato: "))
-                services.resolver_contato(conexao, id_contato)
+                services.resolver_contato(conexao, id_contato, USUARIO_ID)
                 print("Contato marcado como resolvido.")
 
             elif escolha == "6":
                 id_contato = int(input("ID do contato: "))
-                services.mover_contato_para_lixeira(conexao, id_contato)
+                services.mover_contato_para_lixeira(conexao, id_contato, USUARIO_ID)
                 print("Contato movido pra lixeira.")
 
             elif escolha == "7":
@@ -150,24 +150,24 @@ def menu_tarefas(conexao) -> None:
                 id_tarefa = int(input("ID da tarefa a editar: "))
                 titulo = input("Novo título: ")
                 descricao = input("Nova descrição (opcional): ") or None
-                services.editar_tarefa(conexao, id_tarefa, titulo, descricao, prazo=None)
+                services.editar_tarefa(conexao, id_tarefa, titulo, descricao, None, USUARIO_ID)
                 print("Tarefa atualizada com sucesso!")
 
             elif escolha == "4":
                 id_tarefa = int(input("ID da tarefa: "))
                 print("Colunas disponíveis:", ", ".join(f"{c.id}={c.nome}" for c in colunas))
                 id_coluna = int(input("Mover pra qual coluna (ID): "))
-                services.mover_tarefa(conexao, id_tarefa, id_coluna)
+                services.mover_tarefa(conexao, id_tarefa, id_coluna, USUARIO_ID)
                 print("Tarefa movida de coluna.")
 
             elif escolha == "5":
                 id_tarefa = int(input("ID da tarefa: "))
-                services.resolver_tarefa(conexao, id_tarefa)
+                services.resolver_tarefa(conexao, id_tarefa, USUARIO_ID)
                 print("Tarefa marcada como resolvida.")
 
             elif escolha == "6":
                 id_tarefa = int(input("ID da tarefa: "))
-                services.mover_tarefa_para_lixeira(conexao, id_tarefa)
+                services.mover_tarefa_para_lixeira(conexao, id_tarefa, USUARIO_ID)
                 print("Tarefa movida pra lixeira.")
 
             elif escolha == "7":

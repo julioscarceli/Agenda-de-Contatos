@@ -87,10 +87,10 @@ def listar_colunas(conexao, usuario_id: str, pilar: str) -> list[Coluna]:
 
 # Muda o nome de uma fase (ex: renomear "Lead" pra "Novo Contato"). Os
 # cards que já estão nela continuam lá — só o rótulo muda.
-def renomear_coluna(conexao, coluna_id: int, novo_nome: str) -> None:
+def renomear_coluna(conexao, coluna_id: int, novo_nome: str, usuario_id: str) -> None:
     if not novo_nome.strip():
         raise ColunaInvalida("Nome da fase não pode ser vazio.")
-    atualizado = storage.atualizar_nome_coluna(conexao, coluna_id, novo_nome.strip())
+    atualizado = storage.atualizar_nome_coluna(conexao, coluna_id, novo_nome.strip(), usuario_id)
     if not atualizado:
         raise ColunaInvalida(f"Coluna {coluna_id} não encontrada.")
 
@@ -127,36 +127,38 @@ def listar_contatos(conexao, usuario_id: str, status: str = "ativo") -> list[Con
 
 
 def editar_contato(
-    conexao, id_contato: int, nome: str, telefone: str | None = None,
+    conexao, id_contato: int, nome: str, usuario_id: str, telefone: str | None = None,
     email: str | None = None, nota: str | None = None,
 ) -> Contato:
     _validar_dados_contato(nome, telefone, email)
-    atualizado = storage.atualizar_contato(conexao, id_contato, nome, telefone or "", email or "", nota)
+    atualizado = storage.atualizar_contato(
+        conexao, id_contato, nome, telefone or "", email or "", nota, usuario_id
+    )
     if not atualizado:
         raise ContatoNaoEncontrado(f"Contato {id_contato} não encontrado.")
-    return storage.buscar_contato(conexao, id_contato)
+    return storage.buscar_contato(conexao, id_contato, usuario_id)
 
 
 # Arrasta o card do contato pra outra coluna do quadro (ex: de "Lead" pra
 # "Negociando").
-def mover_contato(conexao, id_contato: int, coluna_id: int) -> Contato:
-    movido = storage.mover_contato_de_coluna(conexao, id_contato, coluna_id)
+def mover_contato(conexao, id_contato: int, coluna_id: int, usuario_id: str) -> Contato:
+    movido = storage.mover_contato_de_coluna(conexao, id_contato, coluna_id, usuario_id)
     if not movido:
         raise ContatoNaoEncontrado(f"Contato {id_contato} não encontrado.")
-    return storage.buscar_contato(conexao, id_contato)
+    return storage.buscar_contato(conexao, id_contato, usuario_id)
 
 
 # Marca o contato como resolvido — some do quadro ativo, mas continua no
 # banco (aparece numa vista de "Resolvidos", não é apagado de verdade).
-def resolver_contato(conexao, id_contato: int) -> None:
-    alterado = storage.mudar_status_contato(conexao, id_contato, "resolvido")
+def resolver_contato(conexao, id_contato: int, usuario_id: str) -> None:
+    alterado = storage.mudar_status_contato(conexao, id_contato, "resolvido", usuario_id)
     if not alterado:
         raise ContatoNaoEncontrado(f"Contato {id_contato} não encontrado.")
 
 
 # Manda o contato pra lixeira — mesma lógica do resolver, só que pro "lixo".
-def mover_contato_para_lixeira(conexao, id_contato: int) -> None:
-    alterado = storage.mudar_status_contato(conexao, id_contato, "lixeira")
+def mover_contato_para_lixeira(conexao, id_contato: int, usuario_id: str) -> None:
+    alterado = storage.mudar_status_contato(conexao, id_contato, "lixeira", usuario_id)
     if not alterado:
         raise ContatoNaoEncontrado(f"Contato {id_contato} não encontrado.")
 
@@ -164,8 +166,8 @@ def mover_contato_para_lixeira(conexao, id_contato: int) -> None:
 # Traz um contato resolvido de volta pro quadro ativo — a vista de
 # "Resolvidos" usa isso quando você decide que, na verdade, ainda não
 # terminou com aquele contato.
-def reabrir_contato(conexao, id_contato: int) -> None:
-    alterado = storage.mudar_status_contato(conexao, id_contato, "ativo")
+def reabrir_contato(conexao, id_contato: int, usuario_id: str) -> None:
+    alterado = storage.mudar_status_contato(conexao, id_contato, "ativo", usuario_id)
     if not alterado:
         raise ContatoNaoEncontrado(f"Contato {id_contato} não encontrado.")
 
@@ -195,36 +197,38 @@ def listar_tarefas(
     return storage.listar_tarefas(conexao, usuario_id, contato_id, status)
 
 
-def editar_tarefa(conexao, id_tarefa: int, titulo: str, descricao: str | None, prazo) -> Tarefa:
+def editar_tarefa(
+    conexao, id_tarefa: int, titulo: str, descricao: str | None, prazo, usuario_id: str
+) -> Tarefa:
     _validar_titulo_tarefa(titulo)
-    atualizada = storage.atualizar_tarefa(conexao, id_tarefa, titulo, descricao, prazo)
+    atualizada = storage.atualizar_tarefa(conexao, id_tarefa, titulo, descricao, prazo, usuario_id)
     if not atualizada:
         raise TarefaNaoEncontrada(f"Tarefa {id_tarefa} não encontrada.")
-    return storage.buscar_tarefa(conexao, id_tarefa)
+    return storage.buscar_tarefa(conexao, id_tarefa, usuario_id)
 
 
-def mover_tarefa(conexao, id_tarefa: int, coluna_id: int) -> Tarefa:
-    movida = storage.mover_tarefa_de_coluna(conexao, id_tarefa, coluna_id)
+def mover_tarefa(conexao, id_tarefa: int, coluna_id: int, usuario_id: str) -> Tarefa:
+    movida = storage.mover_tarefa_de_coluna(conexao, id_tarefa, coluna_id, usuario_id)
     if not movida:
         raise TarefaNaoEncontrada(f"Tarefa {id_tarefa} não encontrada.")
-    return storage.buscar_tarefa(conexao, id_tarefa)
+    return storage.buscar_tarefa(conexao, id_tarefa, usuario_id)
 
 
-def resolver_tarefa(conexao, id_tarefa: int) -> None:
-    alterada = storage.mudar_status_tarefa(conexao, id_tarefa, "resolvido")
+def resolver_tarefa(conexao, id_tarefa: int, usuario_id: str) -> None:
+    alterada = storage.mudar_status_tarefa(conexao, id_tarefa, "resolvido", usuario_id)
     if not alterada:
         raise TarefaNaoEncontrada(f"Tarefa {id_tarefa} não encontrada.")
 
 
-def mover_tarefa_para_lixeira(conexao, id_tarefa: int) -> None:
-    alterada = storage.mudar_status_tarefa(conexao, id_tarefa, "lixeira")
+def mover_tarefa_para_lixeira(conexao, id_tarefa: int, usuario_id: str) -> None:
+    alterada = storage.mudar_status_tarefa(conexao, id_tarefa, "lixeira", usuario_id)
     if not alterada:
         raise TarefaNaoEncontrada(f"Tarefa {id_tarefa} não encontrada.")
 
 
 # Traz uma tarefa resolvida de volta pro quadro ativo.
-def reabrir_tarefa(conexao, id_tarefa: int) -> None:
-    alterada = storage.mudar_status_tarefa(conexao, id_tarefa, "ativo")
+def reabrir_tarefa(conexao, id_tarefa: int, usuario_id: str) -> None:
+    alterada = storage.mudar_status_tarefa(conexao, id_tarefa, "ativo", usuario_id)
     if not alterada:
         raise TarefaNaoEncontrada(f"Tarefa {id_tarefa} não encontrada.")
 
