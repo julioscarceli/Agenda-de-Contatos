@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import re
@@ -25,6 +26,13 @@ COLUNAS_PADRAO_TAREFA = [
     ("Lembretes", "#f59e0b"),
     ("Ideias", "#a855f7"),
 ]
+
+
+# O banco nunca guarda o token fixo em si, só esse hash — é o mesmo token
+# que sempre vira o mesmo hash, então dá pra comparar sem nunca ter
+# guardado o valor original (se o banco vazar, o token não vaza junto).
+def hash_token_fixo(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
 class ContatoInvalido(Exception):

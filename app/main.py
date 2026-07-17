@@ -3,7 +3,7 @@ import tempfile
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Request, Response, UploadFile
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -13,7 +13,22 @@ from app import auth_cliente, services, storage
 
 load_dotenv()
 
+
+# Empresta uma conexão do pool pra cada requisição e devolve no final —
+# bem mais rápido do que abrir uma conexão nova a cada clique, porque não
+# paga o preço de rede/autenticação toda vez (isso ficava bem perceptível
+# em dev local, com o banco do outro lado da internet no Zeabur).
+def get_conexao():
+    conexao = storage.obter_conexao()
+    try:
+        yield conexao
+    finally:
+        storage.devolver_conexao(conexao)
+
+
 COOKIE_SESSAO = "sessao"
+COOKIE_REFRESH = "sessao_refresh"
+COOKIE_TOKEN_FIXO = "token_fixo"
 
 
 # Sinaliza "essa pessoa não está logada" pra quem chamar a dependência
@@ -23,18 +38,52 @@ class NaoAutenticado(Exception):
     pass
 
 
-# Dependência que toda rota protegida usa em vez do antigo USUARIO_ID
-# fixo: lê o cookie de sessão, pergunta ao Auth de quem é aquele token,
-# e devolve o usuario_id de quem está navegando. Sem cookie válido, a
-# pessoa nem chega a ver a página — cai direto no login.
-def usuario_id_atual(request: Request) -> str:
-    token = request.cookies.get(COOKIE_SESSAO)
-    if not token:
-        raise NaoAutenticado()
+# Grava os dois cookies de sessão (o token de 1 hora e o de renovação) —
+# usado tanto no login quanto toda vez que a gente renova por trás.
+def _gravar_cookies_sessao(resposta, resultado: dict) -> None:
+    resposta.set_cookie(
+        COOKIE_SESSAO, resultado["access_token"],
+        httponly=True, samesite="lax", secure=True, max_age=60 * 60 * 24 * 30,
+    )
+    resposta.set_cookie(
+        COOKIE_REFRESH, resultado["refresh_token"],
+        httponly=True, samesite="lax", secure=True, max_age=60 * 60 * 24 * 30,
+    )
 
-    usuario = auth_cliente.obter_usuario(token)
+
+# Dependência que toda rota protegida usa em vez do antigo USUARIO_ID
+# fixo. Duas formas de provar quem é a pessoa, nessa ordem:
+# 1. Cookie de token fixo (gerado por gerar_token_fixo.py) — checa
+#    direto no nosso banco, sem depender do Auth.
+# 2. Cookie de sessão normal (do login por email+código) — pergunta ao
+#    Auth de quem é aquele token; se o de 1 hora já expirou, tenta
+#    renovar por trás com o refresh_token antes de desistir.
+# Só cai no login se nenhuma das duas funcionar.
+def usuario_id_atual(request: Request, response: Response, conexao=Depends(get_conexao)) -> str:
+    token_fixo = request.cookies.get(COOKIE_TOKEN_FIXO)
+    if token_fixo:
+        usuario_id = storage.buscar_usuario_por_token_fixo(
+            conexao, services.hash_token_fixo(token_fixo)
+        )
+        if usuario_id:
+            return usuario_id
+
+    token = request.cookies.get(COOKIE_SESSAO)
+    usuario = auth_cliente.obter_usuario(token) if token else None
+
     if usuario is None:
-        raise NaoAutenticado()
+        refresh_token = request.cookies.get(COOKIE_REFRESH)
+        if not refresh_token:
+            raise NaoAutenticado()
+        try:
+            resultado = auth_cliente.renovar_sessao(refresh_token)
+        except auth_cliente.FalhaNoLogin:
+            raise NaoAutenticado()
+        usuario = auth_cliente.obter_usuario(resultado["access_token"])
+        if usuario is None:
+            raise NaoAutenticado()
+        _gravar_cookies_sessao(response, resultado)
+        return usuario["id"]
 
     return usuario["id"]
 
@@ -59,18 +108,6 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 @app.exception_handler(NaoAutenticado)
 def redirecionar_para_login(request: Request, excecao: NaoAutenticado):
     return RedirectResponse("/login")
-
-
-# Empresta uma conexão do pool pra cada requisição e devolve no final —
-# bem mais rápido do que abrir uma conexão nova a cada clique, porque não
-# paga o preço de rede/autenticação toda vez (isso ficava bem perceptível
-# em dev local, com o banco do outro lado da internet no Zeabur).
-def get_conexao():
-    conexao = storage.obter_conexao()
-    try:
-        yield conexao
-    finally:
-        storage.devolver_conexao(conexao)
 
 
 # O "corpo" que o JavaScript manda quando arrasta um card pra outra coluna —
@@ -121,10 +158,7 @@ def verificar_codigo_login(request: Request, email: str = Form(...), codigo: str
         )
 
     resposta = RedirectResponse("/contatos", status_code=303)
-    resposta.set_cookie(
-        COOKIE_SESSAO, resultado["access_token"],
-        httponly=True, samesite="lax", secure=True, max_age=60 * 60 * 24 * 30,
-    )
+    _gravar_cookies_sessao(resposta, resultado)
     return resposta
 
 
@@ -132,6 +166,26 @@ def verificar_codigo_login(request: Request, email: str = Form(...), codigo: str
 def logout():
     resposta = RedirectResponse("/login")
     resposta.delete_cookie(COOKIE_SESSAO)
+    resposta.delete_cookie(COOKIE_REFRESH)
+    resposta.delete_cookie(COOKIE_TOKEN_FIXO)
+    return resposta
+
+
+# Link de entrada direta, gerado por gerar_token_fixo.py — visitar essa
+# URL uma vez grava um cookie que dura anos, sem nunca mais pedir código
+# por email. É menos seguro que o código (o token nunca expira sozinho),
+# então só o admin gera isso pra quem realmente precisa da praticidade.
+@app.get("/entrar-com-token")
+def entrar_com_token(token: str, conexao=Depends(get_conexao)):
+    usuario_id = storage.buscar_usuario_por_token_fixo(conexao, services.hash_token_fixo(token))
+    if usuario_id is None:
+        return RedirectResponse("/login")
+
+    resposta = RedirectResponse("/contatos", status_code=303)
+    resposta.set_cookie(
+        COOKIE_TOKEN_FIXO, token,
+        httponly=True, samesite="lax", secure=True, max_age=60 * 60 * 24 * 365 * 10,
+    )
     return resposta
 
 

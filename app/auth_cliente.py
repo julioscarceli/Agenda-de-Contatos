@@ -48,6 +48,22 @@ def verificar_codigo(email: str, codigo: str) -> dict:
     return resposta.json()
 
 
+# O access_token que o Auth devolve só vale por 1 hora (de propósito,
+# por segurança) — depois disso, em vez de pedir um código novo por
+# email, a gente troca o refresh_token (que dura muito mais) por um
+# access_token novo, por trás, sem a pessoa perceber nada.
+def renovar_sessao(refresh_token: str) -> dict:
+    resposta = httpx.post(
+        f"{SUPABASE_URL}/auth/v1/token?grant_type=refresh_token",
+        json={"refresh_token": refresh_token},
+        headers={"apikey": SUPABASE_ANON_KEY, "Content-Type": "application/json"},
+        timeout=10,
+    )
+    if resposta.status_code >= 400:
+        raise FalhaNoLogin("Sessão expirada, entra de novo.")
+    return resposta.json()
+
+
 # Usa o token guardado no cookie pra perguntar ao Auth "de quem é esse
 # token, mesmo?" — é assim que a gente descobre o usuario_id de quem
 # está navegando, em vez de usar o USUARIO_ID fixo de teste.
