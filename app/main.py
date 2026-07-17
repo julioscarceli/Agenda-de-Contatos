@@ -9,13 +9,18 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from app import services, storage
+from app import auth_cliente, services, storage
 
 load_dotenv()
 
-# Enquanto não existe tela de login, todo mundo que usa o site age como
-# esse usuário de teste fixo — igual o cli.py já fazia.
+# Enquanto o login por email+token não está ligado nas rotas de verdade
+# (só a tela e a chamada ao Auth já existem), todo mundo que usa o site
+# ainda age como esse usuário de teste fixo — igual o cli.py já fazia.
+# Ver EXPLICACAO-DO-PROJETO.md pra entender por que essa ligação final
+# ficou pendente (depende de configurar o SMTP do Auth primeiro).
 USUARIO_ID = os.environ["USUARIO_ID_TESTE"]
+
+COOKIE_SESSAO = "sessao"
 
 
 # Roda uma vez, quando o servidor sobe: garante que as tabelas existem antes
@@ -54,6 +59,54 @@ class MoverPayload(BaseModel):
 @app.get("/")
 def raiz():
     return RedirectResponse("/contatos")
+
+
+# --- Login sem senha (email + código) ---------------------------------------
+#
+# Pendente de ligar nas rotas de verdade: essas telas e chamadas ao Auth já
+# funcionam, mas as rotas de Contatos/Tarefas ainda usam o USUARIO_ID fixo
+# em vez de exigir esse login. Falta o SMTP (Resend) configurado no Auth
+# pra o código realmente chegar por email — sem isso não dá pra testar o
+# fluxo de ponta a ponta.
+
+@app.get("/login")
+def pagina_login(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request, "erro": None})
+
+
+@app.post("/login")
+def enviar_codigo_login(request: Request, email: str = Form(...)):
+    try:
+        auth_cliente.enviar_codigo(email)
+    except auth_cliente.FalhaNoLogin as erro:
+        return templates.TemplateResponse("login.html", {"request": request, "erro": str(erro)})
+    return templates.TemplateResponse(
+        "login_verificar.html", {"request": request, "email": email, "erro": None}
+    )
+
+
+@app.post("/login/verificar")
+def verificar_codigo_login(request: Request, email: str = Form(...), codigo: str = Form(...)):
+    try:
+        resultado = auth_cliente.verificar_codigo(email, codigo)
+    except auth_cliente.FalhaNoLogin as erro:
+        return templates.TemplateResponse(
+            "login_verificar.html", {"request": request, "email": email, "erro": str(erro)}
+        )
+
+    resposta = RedirectResponse("/contatos", status_code=303)
+    resposta.set_cookie(
+        COOKIE_SESSAO, resultado["access_token"],
+        httponly=True, samesite="lax", secure=True, max_age=60 * 60 * 24 * 30,
+    )
+    return resposta
+
+
+@app.get("/logout")
+def logout():
+    resposta = RedirectResponse("/login")
+    resposta.delete_cookie(COOKIE_SESSAO)
+    return resposta
 
 
 # Monta os dados de um quadro (Contatos ou Tarefas) pro template desenhar:
