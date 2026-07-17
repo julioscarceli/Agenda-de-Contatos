@@ -47,8 +47,9 @@ def gerar_token_fixo(email: str) -> None:
     storage.inserir_token_fixo(conexao, usuario_id, services.hash_token_fixo(token))
     conexao.close()
 
-    print("Token gerado — guarda esse link, ele não aparece de novo:")
-    print(f"{APP_URL}/entrar-com-token?token={token}")
+    print("Token gerado — guarda esse valor, ele não aparece de novo:")
+    print(token)
+    print(f"Pra entrar: {APP_URL}/login, cola esse token no campo \"Token fixo\".")
 
 
 if __name__ == "__main__":

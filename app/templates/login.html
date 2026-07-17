@@ -42,6 +42,20 @@
         Entrar
       </button>
     </form>
+
+    <p style="text-align:center; color:var(--cor-texto-suave); font-size:0.75rem; margin:1rem 0;">ou</p>
+
+    <form method="post" action="/entrar-com-token" style="display:flex; flex-direction:column; gap:0.7rem;">
+      <label style="font-size:0.8rem; font-weight:600; color:var(--cor-texto-suave);">
+        Token fixo
+        <input name="token" type="password" placeholder="Seu token pessoal"
+               style="width:100%; padding:0.5rem 0.6rem; border:1px solid var(--cor-borda); border-radius:8px; margin-top:0.25rem;">
+      </label>
+      <button type="submit" class="botao-primario"
+              style="border:none; border-radius:8px; padding:0.6rem; font-weight:600; cursor:pointer;">
+        Entrar com token
+      </button>
+    </form>
   </div>
 
   <script>

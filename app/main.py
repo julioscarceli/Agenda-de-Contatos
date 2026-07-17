@@ -171,15 +171,19 @@ def logout():
     return resposta
 
 
-# Link de entrada direta, gerado por gerar_token_fixo.py — visitar essa
-# URL uma vez grava um cookie que dura anos, sem nunca mais pedir código
-# por email. É menos seguro que o código (o token nunca expira sozinho),
-# então só o admin gera isso pra quem realmente precisa da praticidade.
-@app.get("/entrar-com-token")
-def entrar_com_token(token: str, conexao=Depends(get_conexao)):
+# Segunda forma de entrar, funcionando igual senha: cola o token fixo
+# nessa caixinha da tela de login (gerado por gerar_token_fixo.py) e
+# entra direto — sem código por email. É menos seguro (o token nunca
+# expira sozinho), então só o admin gera isso pra quem precisa da
+# praticidade.
+@app.post("/entrar-com-token")
+def entrar_com_token(request: Request, token: str = Form(...), conexao=Depends(get_conexao)):
     usuario_id = storage.buscar_usuario_por_token_fixo(conexao, services.hash_token_fixo(token))
     if usuario_id is None:
-        return RedirectResponse("/login")
+        return templates.TemplateResponse(
+            "login.html",
+            {"request": request, "erro": "Token inválido.", "email": None, "codigo_enviado": False},
+        )
 
     resposta = RedirectResponse("/contatos", status_code=303)
     resposta.set_cookie(
