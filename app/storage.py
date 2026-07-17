@@ -97,11 +97,15 @@ def criar_tabelas(conexao) -> None:
             CREATE TABLE IF NOT EXISTS tokens_fixos (
                 id SERIAL PRIMARY KEY,
                 usuario_id UUID NOT NULL REFERENCES auth.users(id),
+                email TEXT,
                 token_hash TEXT NOT NULL UNIQUE,
                 criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
             )
             """
         )
+        # A tabela já existia antes da coluna email ser criada — esse ALTER
+        # é só pra quem tem um banco de antes dessa mudança "pegar carona".
+        cursor.execute("ALTER TABLE tokens_fixos ADD COLUMN IF NOT EXISTS email TEXT")
     conexao.commit()
 
 
@@ -109,22 +113,29 @@ def criar_tabelas(conexao) -> None:
 
 # Guarda só o hash do token (nunca o token em si) — se alguém acessar o
 # banco, não consegue reconstruir o token original a partir do hash.
-def inserir_token_fixo(conexao, usuario_id: str, token_hash: str) -> None:
+def inserir_token_fixo(conexao, usuario_id: str, email: str, token_hash: str) -> None:
     with conexao.cursor() as cursor:
         cursor.execute(
-            "INSERT INTO tokens_fixos (usuario_id, token_hash) VALUES (%s, %s)",
-            (usuario_id, token_hash),
+            "INSERT INTO tokens_fixos (usuario_id, email, token_hash) VALUES (%s, %s, %s)",
+            (usuario_id, email, token_hash),
         )
     conexao.commit()
 
 
-# Acha de quem é um token fixo, pelo hash — usado toda vez que alguém
-# visita o link de login direto, em vez do fluxo de código por email.
-def buscar_usuario_por_token_fixo(conexao, token_hash: str) -> str | None:
+# Login funciona como usuário+senha: email e token precisam bater com o
+# mesmo cadastro. Usado tanto na tela de login quanto pra manter a
+# sessão viva a cada requisição (cookie guarda só o token).
+def buscar_usuario_por_token_fixo(conexao, token_hash: str, email: str | None = None) -> str | None:
     with conexao.cursor() as cursor:
-        cursor.execute(
-            "SELECT usuario_id FROM tokens_fixos WHERE token_hash = %s", (token_hash,)
-        )
+        if email is None:
+            cursor.execute(
+                "SELECT usuario_id FROM tokens_fixos WHERE token_hash = %s", (token_hash,)
+            )
+        else:
+            cursor.execute(
+                "SELECT usuario_id FROM tokens_fixos WHERE token_hash = %s AND email = %s",
+                (token_hash, email),
+            )
         linha = cursor.fetchone()
     return str(linha[0]) if linha else None
 
