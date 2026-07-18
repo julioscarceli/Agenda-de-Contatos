@@ -4,7 +4,6 @@ import os
 import re
 import secrets
 
-import httpx
 from openai import OpenAI
 
 from app.models import Coluna, Contato, Tarefa
@@ -37,43 +36,24 @@ def hash_token_fixo(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-_CABECALHOS_ADMIN_SUPABASE = {
-    "apikey": os.environ.get("SUPABASE_SERVICE_ROLE_KEY", ""),
-    "Authorization": f"Bearer {os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')}",
-    "Content-Type": "application/json",
-}
-
-
-# Acha o usuario_id de um email já cadastrado no Auth, ou cria a conta
-# na hora se for a primeira vez — só existe pra ter um usuario_id de
-# verdade pra amarrar os dados da pessoa, não pra ela logar por aqui.
-def _garantir_usuario_id_no_auth(email: str) -> str:
-    supabase_url = os.environ["SUPABASE_URL"]
-    resposta = httpx.get(
-        f"{supabase_url}/auth/v1/admin/users",
-        params={"email": email},
-        headers=_CABECALHOS_ADMIN_SUPABASE,
-        timeout=10,
-    )
-    usuarios = resposta.json().get("users", [])
-    if usuarios:
-        return usuarios[0]["id"]
-
-    resposta = httpx.post(
-        f"{supabase_url}/auth/v1/admin/users",
-        json={"email": email, "email_confirm": True},
-        headers=_CABECALHOS_ADMIN_SUPABASE,
-        timeout=10,
-    )
-    resposta.raise_for_status()
-    return resposta.json()["id"]
+# Acha o usuario_id de um email já cadastrado, ou cria a conta na hora se
+# for a primeira vez — direto no banco (não pela API do Supabase Auth),
+# só existe pra ter um usuario_id de verdade pra amarrar os dados da
+# pessoa, não pra ela logar por aqui. Ir direto no banco evita depender
+# do Kong/Auth (que já se mostraram frágeis nesse projeto — ver decisão
+# técnica) só pra essa checagem simples.
+def _garantir_usuario_id_no_auth(conexao, email: str) -> str:
+    usuario_id = storage.buscar_usuario_id_por_email(conexao, email)
+    if usuario_id:
+        return usuario_id
+    return storage.criar_usuario_auth(conexao, email)
 
 
 # Libera o acesso de um email novo (ou gera outro token pra um que já
 # existe) — usada tanto pelo script `cadastrar_usuario.py` quanto pela
 # página /admin, pra nunca duplicar essa lógica nos dois lugares.
 def criar_acesso_convidado(conexao, email: str) -> str:
-    usuario_id = _garantir_usuario_id_no_auth(email)
+    usuario_id = _garantir_usuario_id_no_auth(conexao, email)
     token = secrets.token_urlsafe(32)
     storage.inserir_token_fixo(conexao, usuario_id, email, hash_token_fixo(token))
     return token

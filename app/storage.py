@@ -109,6 +109,40 @@ def criar_tabelas(conexao) -> None:
     conexao.commit()
 
 
+# --- Usuários (auth.users) ------------------------------------------------
+
+# Só existe pra saber se um email já tem um usuario_id — direto no banco,
+# sem passar pela API do Supabase Auth (que depende do Kong estar saudável).
+def buscar_usuario_id_por_email(conexao, email: str) -> str | None:
+    with conexao.cursor() as cursor:
+        cursor.execute("SELECT id FROM auth.users WHERE email = %s", (email,))
+        linha = cursor.fetchone()
+    return str(linha[0]) if linha else None
+
+
+# Cria a linha em auth.users pra um email novo — só o suficiente pra ter
+# um usuario_id com integridade referencial. As colunas de token ganham
+# string vazia (não NULL) porque o Supabase Auth trata NULL nelas como
+# erro em qualquer consulta futura que ele fizer nessa tabela.
+def criar_usuario_auth(conexao, email: str) -> str:
+    with conexao.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO auth.users
+                (id, email, aud, role, email_confirmed_at, confirmation_token,
+                 recovery_token, email_change_token_new, created_at, updated_at)
+            VALUES
+                (gen_random_uuid(), %s, 'authenticated', 'authenticated', now(),
+                 '', '', '', now(), now())
+            RETURNING id
+            """,
+            (email,),
+        )
+        usuario_id = cursor.fetchone()[0]
+    conexao.commit()
+    return str(usuario_id)
+
+
 # --- Login com token fixo ------------------------------------------------
 
 # Guarda só o hash do token (nunca o token em si) — se alguém acessar o
